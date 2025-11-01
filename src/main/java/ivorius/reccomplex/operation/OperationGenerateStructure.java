@@ -164,6 +164,9 @@ public class OperationGenerateStructure implements Operation
         if (structureID != null)
             compound.setString("structureIDForSaving", structureID);
 
+        if (generationInfoID != null)
+            compound.setString("generationInfoID", generationInfoID);
+
         if (seed != null)
             compound.setString("seed", seed);
 
@@ -184,6 +187,10 @@ public class OperationGenerateStructure implements Operation
 
         structureID = compound.hasKey("structureIDForSaving", Constants.NBT.TAG_STRING)
                 ? compound.getString("structureIDForSaving")
+                : null;
+
+        generationInfoID = compound.hasKey("generationInfoID", Constants.NBT.TAG_STRING)
+                ? compound.getString("generationInfoID")
                 : null;
 
         seed = compound.hasKey("seed") ? compound.getString("seed") : null;
