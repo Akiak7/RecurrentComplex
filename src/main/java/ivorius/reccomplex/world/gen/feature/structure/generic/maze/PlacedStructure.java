@@ -45,7 +45,7 @@ public class PlacedStructure implements NBTCompoundObject
     public void readFromNBT(NBTTagCompound compound)
     {
         structureID = compound.getString("structureID");
-        generationInfoID = compound.hasKey(generationInfoID, Constants.NBT.TAG_STRING) ? compound.getString("generationInfoID") : null;
+        generationInfoID = compound.hasKey("generationInfoID", Constants.NBT.TAG_STRING) ? compound.getString("generationInfoID") : null;
         transform = RCAxisAlignedTransform.read(compound, "rotation", "mirrorX");
         lowerCoord = BlockPositions.readFromNBT("lowerCoord", compound);
         instanceData = compound.hasKey("instanceData", Constants.NBT.TAG_COMPOUND) ? compound.getTag("instanceData") : null;

@@ -318,7 +318,7 @@ public class WorldScriptStructureGenerator implements WorldScript<WorldScriptStr
         public InstanceData(NBTTagCompound compound)
         {
             structureID = compound.getString("structureID");
-            generationInfoID = compound.hasKey(generationInfoID, Constants.NBT.TAG_STRING) ? compound.getString("generationInfoID") : null;
+            generationInfoID = compound.hasKey("generationInfoID", Constants.NBT.TAG_STRING) ? compound.getString("generationInfoID") : null;
             lowerCoord = BlockPositions.readFromNBT("lowerCoord", compound);
             structureTransform = RCAxisAlignedTransform.read(compound, "rotation", "mirrorX");
             structureData.readFromNBT("structureData", compound);
