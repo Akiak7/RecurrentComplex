@@ -246,9 +246,9 @@ public class WorldStructureGenerationData extends WorldSavedData
         public boolean equals(Object o)
         {
             if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
+            if (!(o instanceof Entry)) return false;
 
-            StructureEntry entry = (StructureEntry) o;
+            Entry entry = (Entry) o;
 
             return uuid.equals(entry.uuid);
         }
