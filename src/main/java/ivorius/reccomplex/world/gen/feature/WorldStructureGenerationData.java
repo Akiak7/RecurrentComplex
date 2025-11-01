@@ -350,7 +350,7 @@ public class WorldStructureGenerationData extends WorldSavedData
             super.readFromNBT(compound);
 
             structureID = compound.getString("structureID");
-            generationInfoID = compound.hasKey(generationInfoID, Constants.NBT.TAG_STRING) ? compound.getString("generationInfoID") : null;
+            generationInfoID = compound.hasKey("generationInfoID", Constants.NBT.TAG_STRING) ? compound.getString("generationInfoID") : null;
 
             seed = compound.hasKey("seed") ? compound.getLong("seed")
                     : new Random().nextLong(); // Legacy
