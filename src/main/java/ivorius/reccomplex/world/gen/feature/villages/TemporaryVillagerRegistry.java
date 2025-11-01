@@ -10,6 +10,8 @@ import net.minecraftforge.fml.common.registry.VillagerRegistry;
 import ivorius.reccomplex.utils.ReflectionCompat;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -33,7 +35,7 @@ public class TemporaryVillagerRegistry
     {
         if (handlerField == null)
             handlerField = ReflectionCompat.findField(VillagerRegistry.class,
-                    field -> Map.class.isAssignableFrom(field.getType()),
+                    TemporaryVillagerRegistry::isHandlerMapField,
                     "villageCreationHandlers");
 
         try
@@ -81,5 +83,63 @@ public class TemporaryVillagerRegistry
 
         registeredHandlers.clear();
         registeredHandlers.addAll(handlers);
+    }
+
+    private static boolean isHandlerMapField(Field field)
+    {
+        if (!Map.class.isAssignableFrom(field.getType()))
+            return false;
+
+        Type genericType = field.getGenericType();
+        if (genericType instanceof ParameterizedType)
+        {
+            ParameterizedType parameterizedType = (ParameterizedType) genericType;
+            Type[] arguments = parameterizedType.getActualTypeArguments();
+            if (arguments.length == 2 && isClassType(arguments[0]) && isVillageHandlerType(arguments[1]))
+                return true;
+        }
+
+        field.setAccessible(true);
+        try
+        {
+            Object candidate = field.get(VillagerRegistry.instance());
+            if (!(candidate instanceof Map))
+                return false;
+
+            Map<?, ?> map = (Map<?, ?>) candidate;
+            if (map.isEmpty())
+                return false;
+
+            Object key = map.keySet().iterator().next();
+            Object handler = map.values().iterator().next();
+            return key instanceof Class && handler instanceof VillagerRegistry.IVillageCreationHandler;
+        }
+        catch (IllegalAccessException ignored)
+        {
+        }
+
+        return false;
+    }
+
+    private static boolean isClassType(Type type)
+    {
+        if (type instanceof Class)
+            return Class.class.isAssignableFrom((Class<?>) type);
+
+        if (type instanceof ParameterizedType)
+            return isClassType(((ParameterizedType) type).getRawType());
+
+        return false;
+    }
+
+    private static boolean isVillageHandlerType(Type type)
+    {
+        if (type instanceof Class)
+            return VillagerRegistry.IVillageCreationHandler.class.isAssignableFrom((Class<?>) type);
+
+        if (type instanceof ParameterizedType)
+            return isVillageHandlerType(((ParameterizedType) type).getRawType());
+
+        return false;
     }
 }
