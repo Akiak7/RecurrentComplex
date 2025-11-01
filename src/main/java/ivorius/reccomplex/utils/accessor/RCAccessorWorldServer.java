@@ -5,7 +5,7 @@
 
 package ivorius.reccomplex.utils.accessor;
 
-import net.minecraftforge.fml.relauncher.ReflectionHelper;
+import ivorius.reccomplex.utils.ReflectionCompat;
 import net.minecraft.world.WorldServer;
 
 import java.lang.reflect.*;
@@ -33,7 +33,9 @@ public class RCAccessorWorldServer
             }
         }
         if (blockEventQueueField == null)
-            blockEventQueueField = ReflectionHelper.findField(WorldServer.class, "blockEventQueue", "field_147490_S");
+            blockEventQueueField = ReflectionCompat.findField(WorldServer.class,
+                    field -> field.getType().isArray() && field.getType().getComponentType() == worldServerServerBlockEventListClass,
+                    "blockEventQueue", "field_147490_S");
         if (blockEventListConstructor == null)
         {
             blockEventListConstructor = worldServerServerBlockEventListClass.getDeclaredConstructors()[0];

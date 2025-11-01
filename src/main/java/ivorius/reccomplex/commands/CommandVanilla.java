@@ -20,6 +20,7 @@ import ivorius.reccomplex.random.Person;
 import ivorius.reccomplex.utils.RCBlockAreas;
 import ivorius.reccomplex.utils.RCStrings;
 import ivorius.reccomplex.utils.RCStructureBoundingBoxes;
+import ivorius.reccomplex.utils.ReflectionCompat;
 import ivorius.reccomplex.utils.accessor.RCAccessorMapGenStructure;
 import ivorius.reccomplex.utils.accessor.SafeReflector;
 import ivorius.reccomplex.world.gen.feature.structure.MapGenStructureHook;
@@ -55,6 +56,15 @@ import java.util.stream.Stream;
 public class CommandVanilla extends CommandSplit
 {
     private static Method recursiveGenerate;
+    private static final java.lang.reflect.Field MAPGENBASE_RAND_FIELD = ReflectionCompat.findField(MapGenBase.class,
+            field -> Random.class.isAssignableFrom(field.getType()),
+            "rand", "field_75038_b");
+    private static final java.lang.reflect.Field MAPGENBASE_WORLD_FIELD = ReflectionCompat.findField(MapGenBase.class,
+            field -> World.class.isAssignableFrom(field.getType()),
+            "world", "field_75039_c");
+    private static final java.lang.reflect.Field WORLD_PROVIDER_BIOME_FIELD = ReflectionCompat.findField(WorldProvider.class,
+            field -> BiomeProvider.class.isAssignableFrom(field.getType()),
+            "biomeProvider", "field_76578_c");
 
     public CommandVanilla()
     {
@@ -95,7 +105,7 @@ public class CommandVanilla extends CommandSplit
                     ChunkPos chunkPos = pos.chunkCoord();
                     Random random = new Random(RCStrings.seed(seed));
 
-                    ReflectionHelper.setPrivateValue(MapGenBase.class, gen, random, "rand", "field_75038_b");
+                    ReflectionCompat.set(MAPGENBASE_RAND_FIELD, gen, random);
                     recursiveGenerate(gen, world, chunkPos);
 
                     StructureStart structureStart = MapGenStructureHook.getStructureStart(gen, chunkPos);
@@ -137,7 +147,7 @@ public class CommandVanilla extends CommandSplit
 
     public static void setBiomeProvider(WorldProvider provider, BiomeProvider biomeProvider)
     {
-        ReflectionHelper.setPrivateValue(WorldProvider.class, provider, biomeProvider, "biomeProvider", "field_76578_c");
+        ReflectionCompat.set(WORLD_PROVIDER_BIOME_FIELD, provider, biomeProvider);
     }
 
     public static List<ITextComponent> sightNames(World world, BlockPos pos)
@@ -157,7 +167,7 @@ public class CommandVanilla extends CommandSplit
     {
         return Arrays.stream(Type.values())
                 .map(t -> t.generator(false))
-                .peek(m -> ReflectionHelper.setPrivateValue(MapGenBase.class, m, world, "world", "field_75039_c"))
+                .peek(m -> ReflectionCompat.set(MAPGENBASE_WORLD_FIELD, m, world))
                 .filter(m -> m.isInsideStructure(pos));
     }
 
@@ -176,7 +186,7 @@ public class CommandVanilla extends CommandSplit
             recursiveGenerate = ReflectionHelper.findMethod(MapGenBase.class, "recursiveGenerate", "func_180701_a",
                     World.class, Integer.TYPE, Integer.TYPE, Integer.TYPE, Integer.TYPE, ChunkPrimer.class);
 
-        ReflectionHelper.setPrivateValue(MapGenBase.class, gen, world, "world", "field_75039_c");
+        ReflectionCompat.set(MAPGENBASE_WORLD_FIELD, gen, world);
 
         SafeReflector.invoke(gen, recursiveGenerate, null, world, pos.x, pos.z, 0, 0, primer);
     }

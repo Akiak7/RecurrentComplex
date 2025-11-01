@@ -10,10 +10,10 @@ import ivorius.reccomplex.gui.table.TableDelegate;
 import ivorius.reccomplex.gui.table.TableNavigator;
 import ivorius.reccomplex.gui.table.cell.*;
 import ivorius.reccomplex.gui.table.datasource.TableDataSourceSegmented;
+import ivorius.reccomplex.utils.ReflectionCompat;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.text.TextFormatting;
-import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
@@ -120,7 +120,7 @@ public class TableDataSourceNBTList extends TableDataSourceSegmented
                             {
                                 while (!nbt.hasNoTags())
                                     nbt.removeTag(nbt.tagCount() - 1);
-                                ReflectionHelper.setPrivateValue(NBTTagList.class, nbt, (byte) id, "tagType", "field_74746_b");
+                                ReflectionCompat.set(TAG_TYPE_FIELD, nbt, (byte) id);
                                 delegate.reloadData();
                             }))
                             .collect(Collectors.toList())
@@ -188,4 +188,8 @@ public class TableDataSourceNBTList extends TableDataSourceSegmented
 
         return Arrays.asList(entryCell, earlier, later, delete);
     }
+
+    private static final java.lang.reflect.Field TAG_TYPE_FIELD = ReflectionCompat.findField(NBTTagList.class,
+            field -> field.getType() == byte.class,
+            "tagType", "field_74746_b");
 }

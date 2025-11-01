@@ -7,7 +7,7 @@ package ivorius.reccomplex.world.gen.feature.villages;
 
 import com.google.common.collect.Sets;
 import net.minecraftforge.fml.common.registry.VillagerRegistry;
-import net.minecraftforge.fml.relauncher.ReflectionHelper;
+import ivorius.reccomplex.utils.ReflectionCompat;
 
 import java.lang.reflect.Field;
 import java.util.HashSet;
@@ -32,7 +32,9 @@ public class TemporaryVillagerRegistry
     protected static Map<Class<?>, VillagerRegistry.IVillageCreationHandler> getMap()
     {
         if (handlerField == null)
-            handlerField = ReflectionHelper.findField(VillagerRegistry.class, "villageCreationHandlers");
+            handlerField = ReflectionCompat.findField(VillagerRegistry.class,
+                    field -> Map.class.isAssignableFrom(field.getType()),
+                    "villageCreationHandlers");
 
         try
         {
