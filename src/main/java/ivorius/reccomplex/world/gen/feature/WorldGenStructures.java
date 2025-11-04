@@ -244,20 +244,27 @@ public class WorldGenStructures
         boolean worldWantsStructures = world.getWorldInfo().isMapFeaturesEnabled();
         WorldStructureGenerationData data = WorldStructureGenerationData.get(world);
 
-        // We need to synchronize (multithreaded gen) since we need to plan structures before complementing,
-        // otherwise structures get lost in some chunks
-        List<ReentrantLock> chunkLocks = lockChunks(Stream.of(chunkPos));
-        try
+        List<WorldStructureGenerationData.StructureEntry> complement;
+        boolean finalCheckPassed = true;
+
+        synchronized (data)
         {
-            List<WorldStructureGenerationData.StructureEntry> complement = data.structureEntriesIn(chunkPos).collect(Collectors.toList());
+            complement = data.structureEntriesIn(chunkPos).collect(Collectors.toList());
             if (structurePredicate == null)
                 data.checkChunk(chunkPos);
 
-            if (structurePredicate == null)
-                complementStructuresInChunk(chunkPos, world, complement);
+            if (structurePredicate != null && RecurrentComplex.PARTIALLY_SPAWN_NATURAL_STRUCTURES)
+                finalCheckPassed = data.checkChunkFinal(chunkPos);
+        }
 
+        if (structurePredicate == null)
+            complementStructuresInChunk(chunkPos, world, complement);
+
+        List<ReentrantLock> chunkLocks = lockChunks(Stream.of(chunkPos));
+        try
+        {
             if ((!RCConfig.honorStructureGenerationOption || worldWantsStructures)
-                    && (structurePredicate == null || !RecurrentComplex.PARTIALLY_SPAWN_NATURAL_STRUCTURES || data.checkChunkFinal(chunkPos)))
+                    && (structurePredicate == null || !RecurrentComplex.PARTIALLY_SPAWN_NATURAL_STRUCTURES || finalCheckPassed))
             {
                 Biome biomeGen = world.getBiome(chunkPos.getBlock(8, 0, 8));
                 BlockPos spawnPos = world.getSpawnPoint();
