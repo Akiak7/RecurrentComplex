@@ -32,6 +32,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -46,7 +47,26 @@ public class WorldGenStructures
 
     public static final int STRUCTURE_TRIES = 10;
 
-    private static final ConcurrentMap<Long, ReentrantLock> CHUNK_LOCKS = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Long, LockWithUsage> CHUNK_LOCKS = new ConcurrentHashMap<>();
+
+    private static final class LockWithUsage extends ReentrantLock
+    {
+        private final AtomicInteger usage = new AtomicInteger();
+    }
+
+    private static final class ChunkLockHandle
+    {
+        private final long key;
+        private final LockWithUsage lock;
+        private final AtomicInteger usage;
+
+        private ChunkLockHandle(long key, LockWithUsage lock)
+        {
+            this.key = key;
+            this.lock = lock;
+            this.usage = lock.usage;
+        }
+    }
 
     private static long chunkKey(ChunkPos chunkPos)
     {
@@ -58,7 +78,7 @@ public class WorldGenStructures
         return ((long) x & 0xffffffffL) << 32 | ((long) z & 0xffffffffL);
     }
 
-    private static List<ReentrantLock> lockChunks(Stream<ChunkPos> chunkPositions)
+    private static List<ChunkLockHandle> lockChunks(Stream<ChunkPos> chunkPositions)
     {
         List<Long> keys = chunkPositions
                 .map(WorldGenStructures::chunkKey)
@@ -66,21 +86,36 @@ public class WorldGenStructures
                 .sorted()
                 .collect(Collectors.toList());
 
-        List<ReentrantLock> locks = new ArrayList<>(keys.size());
+        List<ChunkLockHandle> locks = new ArrayList<>(keys.size());
         for (Long key : keys)
         {
-            ReentrantLock lock = CHUNK_LOCKS.computeIfAbsent(key, k -> new ReentrantLock());
+            LockWithUsage lock = CHUNK_LOCKS.compute(key, (k, existing) ->
+            {
+                LockWithUsage actual = existing;
+                if (actual == null)
+                    actual = new LockWithUsage();
+
+                actual.usage.incrementAndGet();
+                return actual;
+            });
+
             lock.lock();
-            locks.add(lock);
+            locks.add(new ChunkLockHandle(key, lock));
         }
 
         return locks;
     }
 
-    private static void unlockChunks(List<ReentrantLock> locks)
+    private static void unlockChunks(List<ChunkLockHandle> locks)
     {
         for (int i = locks.size() - 1; i >= 0; i--)
-            locks.get(i).unlock();
+        {
+            ChunkLockHandle handle = locks.get(i);
+            handle.lock.unlock();
+
+            if (handle.usage.decrementAndGet() == 0 && !handle.lock.hasQueuedThreads())
+                CHUNK_LOCKS.remove(handle.key, handle.lock);
+        }
     }
 
     public static void planStaticStructuresInChunk(Random random, ChunkPos chunkPos, WorldServer world, BlockPos spawnPos, @Nullable Predicate<Structure> structurePredicate)
@@ -179,7 +214,7 @@ public class WorldGenStructures
             Set<ChunkPos> relevantChunks = new HashSet<>(entry.rasterize());
             relevantChunks.add(chunkPos);
 
-            List<ReentrantLock> locks = lockChunks(relevantChunks.stream());
+            List<ChunkLockHandle> locks = lockChunks(relevantChunks.stream());
             try
             {
                 Structure<?> structure = StructureRegistry.INSTANCE.get(entry.getStructureID());
@@ -260,7 +295,7 @@ public class WorldGenStructures
         if (structurePredicate == null)
             complementStructuresInChunk(chunkPos, world, complement);
 
-        List<ReentrantLock> chunkLocks = lockChunks(Stream.of(chunkPos));
+        List<ChunkLockHandle> chunkLocks = lockChunks(Stream.of(chunkPos));
         try
         {
             if ((!RCConfig.honorStructureGenerationOption || worldWantsStructures)
