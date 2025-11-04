@@ -10,8 +10,12 @@ import ivorius.reccomplex.RecurrentComplex;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 /**
  * Created by lukas on 19.09.16.
@@ -24,6 +28,10 @@ public class PresettedObject<T>
     protected String preset;
 
     protected T t;
+
+    private static final Map<PresetRegistry<?>, Set<String>> MISSING_PRESETS = new WeakHashMap<>();
+
+    private boolean missingPresetResolved;
 
     public PresettedObject(@Nonnull PresetRegistry<T> presetRegistry, @Nullable String preset)
     {
@@ -40,6 +48,7 @@ public class PresettedObject<T>
     public void setPresetRegistry(@Nonnull PresetRegistry<T> presetRegistry)
     {
         this.presetRegistry = presetRegistry;
+        missingPresetResolved = false;
     }
 
     @Nullable
@@ -72,6 +81,7 @@ public class PresettedObject<T>
         // Check when the data is actually needed.
         this.preset = preset;
         t = null;
+        missingPresetResolved = false;
 
         return true;
     }
@@ -80,6 +90,7 @@ public class PresettedObject<T>
     {
         loadFromPreset(true);
         preset = null;
+        missingPresetResolved = false;
     }
 
     public boolean isCustom()
@@ -103,6 +114,7 @@ public class PresettedObject<T>
     {
         preset = null;
         t = ts;
+        missingPresetResolved = false;
     }
 
     protected boolean loadFromPreset(boolean copy)
@@ -110,12 +122,25 @@ public class PresettedObject<T>
         if (preset == null)
             return true;
 
+        if (missingPresetResolved)
+        {
+            if (presetRegistry.has(preset))
+                missingPresetResolved = false;
+            else
+            {
+                t = fallbackContents(copy);
+                return true;
+            }
+        }
+
         if ((t = presetContents(copy)) != null)
             return true;
 
-        RecurrentComplex.logger.warn(String.format("Failed to find preset (%s): %s", presetRegistry.getRegistry().description, preset));
-        //noinspection OptionalGetWithoutIsPresent
-        t = (copy ? presetRegistry.preset(defaultPreset()) : presetRegistry.originalPreset(defaultPreset())).get();
+        if (markMissingPreset(presetRegistry, preset))
+            RecurrentComplex.logger.warn(String.format("Failed to find preset (%s): %s", presetRegistry.getRegistry().description, preset));
+
+        t = fallbackContents(copy);
+        missingPresetResolved = true;
 
         return false;
     }
@@ -131,5 +156,19 @@ public class PresettedObject<T>
     private T presetContents(boolean copy)
     {
         return (copy ? presetRegistry.preset(this.preset) : presetRegistry.originalPreset(this.preset)).orElse(null);
+    }
+
+    private T fallbackContents(boolean copy)
+    {
+        //noinspection OptionalGetWithoutIsPresent
+        return (copy ? presetRegistry.preset(defaultPreset()) : presetRegistry.originalPreset(defaultPreset())).get();
+    }
+
+    private static boolean markMissingPreset(PresetRegistry<?> registry, String preset)
+    {
+        synchronized (MISSING_PRESETS)
+        {
+            return MISSING_PRESETS.computeIfAbsent(registry, key -> new HashSet<>()).add(preset);
+        }
     }
 }
