@@ -7,7 +7,6 @@ package ivorius.reccomplex.world.gen.feature;
 
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.SetMultimap;
-import com.google.common.collect.Sets;
 import ivorius.ivtoolkit.blocks.BlockPositions;
 import ivorius.ivtoolkit.math.AxisAlignedTransform2D;
 import ivorius.ivtoolkit.tools.NBTCompoundObject;
@@ -20,6 +19,9 @@ import ivorius.reccomplex.utils.RCStructureBoundingBoxes;
 import ivorius.reccomplex.world.gen.feature.structure.Structure;
 import ivorius.reccomplex.world.gen.feature.structure.StructureRegistry;
 import ivorius.reccomplex.world.gen.feature.structure.Structures;
+import it.unimi.dsi.fastutil.longs.LongIterator;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
@@ -41,8 +43,8 @@ public class WorldStructureGenerationData extends WorldSavedData
 {
     private static final String IDENTIFIER = RecurrentComplex.MOD_ID + "-structuredata";
 
-    protected final Set<ChunkPos> checkedChunks = new HashSet<>();
-    protected final Set<ChunkPos> checkedChunksFinal = new HashSet<>();
+    protected final LongSet checkedChunks = new LongOpenHashSet();
+    protected final LongSet checkedChunksFinal = new LongOpenHashSet();
 
     protected final Map<UUID, Entry> entryMap = new HashMap<>();
     protected final SetMultimap<ChunkPos, Entry> chunkMap = HashMultimap.create();
@@ -114,7 +116,18 @@ public class WorldStructureGenerationData extends WorldSavedData
 
         markDirty();
 
-        return Sets.intersection(checkedChunks, rasterized);
+        LongSet rasterizedSet = new LongOpenHashSet(rasterized.size());
+        rasterized.forEach(chunkPos -> rasterizedSet.add(ChunkPos.asLong(chunkPos.x, chunkPos.z)));
+
+        Set<ChunkPos> intersection = new HashSet<>();
+        for (LongIterator iterator = rasterizedSet.iterator(); iterator.hasNext(); )
+        {
+            long pos = iterator.nextLong();
+            if (checkedChunks.contains(pos))
+                intersection.add(new ChunkPos(ChunkPos.getX(pos), ChunkPos.getZ(pos)));
+        }
+
+        return Collections.unmodifiableSet(intersection);
     }
 
     public Entry getEntry(UUID id)
@@ -145,7 +158,7 @@ public class WorldStructureGenerationData extends WorldSavedData
 
     public boolean checkChunk(ChunkPos coords)
     {
-        boolean added = checkedChunks.add(coords);
+        boolean added = checkedChunks.add(ChunkPos.asLong(coords.x, coords.z));
         if (added)
             markDirty();
         return added;
@@ -154,7 +167,7 @@ public class WorldStructureGenerationData extends WorldSavedData
     //
     public boolean checkChunkFinal(ChunkPos coords)
     {
-        boolean added = checkedChunksFinal.add(coords);
+        boolean added = checkedChunksFinal.add(ChunkPos.asLong(coords.x, coords.z));
         if (added)
             markDirty();
         return added;
@@ -170,9 +183,9 @@ public class WorldStructureGenerationData extends WorldSavedData
         NBTCompoundObjects.readListFrom(compound, "customEntries", CustomEntry::new).forEach(this::addEntry);
 
         checkedChunks.clear();
-        NBTTagLists.intArraysFrom(compound, "checkedChunks").forEach(ints -> checkedChunks.add(new ChunkPos(ints[0], ints[1])));
+        NBTTagLists.intArraysFrom(compound, "checkedChunks").forEach(ints -> checkedChunks.add(ChunkPos.asLong(ints[0], ints[1])));
         checkedChunksFinal.clear();
-        NBTTagLists.intArraysFrom(compound, "checkedChunksFinal").forEach(ints -> checkedChunksFinal.add(new ChunkPos(ints[0], ints[1])));
+        NBTTagLists.intArraysFrom(compound, "checkedChunksFinal").forEach(ints -> checkedChunksFinal.add(ChunkPos.asLong(ints[0], ints[1])));
     }
 
     @Override
@@ -181,8 +194,21 @@ public class WorldStructureGenerationData extends WorldSavedData
         NBTCompoundObjects.writeListTo(compound, "entries", entryMap.values().stream().filter(e -> e instanceof StructureEntry).collect(Collectors.toList()));
         NBTCompoundObjects.writeListTo(compound, "customEntries", entryMap.values().stream().filter(e -> e instanceof CustomEntry).collect(Collectors.toList()));
 
-        NBTTagLists.writeIntArraysTo(compound, "checkedChunks", checkedChunks.stream().map(c -> new int[]{c.x, c.z}).collect(Collectors.toList()));
-        NBTTagLists.writeIntArraysTo(compound, "checkedChunksFinal", checkedChunksFinal.stream().map(c -> new int[]{c.x, c.z}).collect(Collectors.toList()));
+        List<int[]> checkedChunksList = new ArrayList<>(checkedChunks.size());
+        for (LongIterator iterator = checkedChunks.iterator(); iterator.hasNext(); )
+        {
+            long pos = iterator.nextLong();
+            checkedChunksList.add(new int[]{ChunkPos.getX(pos), ChunkPos.getZ(pos)});
+        }
+        NBTTagLists.writeIntArraysTo(compound, "checkedChunks", checkedChunksList);
+
+        List<int[]> checkedChunksFinalList = new ArrayList<>(checkedChunksFinal.size());
+        for (LongIterator iterator = checkedChunksFinal.iterator(); iterator.hasNext(); )
+        {
+            long pos = iterator.nextLong();
+            checkedChunksFinalList.add(new int[]{ChunkPos.getX(pos), ChunkPos.getZ(pos)});
+        }
+        NBTTagLists.writeIntArraysTo(compound, "checkedChunksFinal", checkedChunksFinalList);
 
         return compound;
     }
