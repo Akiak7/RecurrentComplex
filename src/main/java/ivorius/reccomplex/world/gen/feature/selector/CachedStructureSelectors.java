@@ -11,16 +11,17 @@ import net.minecraft.world.biome.Biome;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiFunction;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Created by lukas on 23.09.16.
  */
 public class CachedStructureSelectors<S extends StructureSelector>
 {
-    private Map<Pair<Integer, ResourceLocation>, S> structureSelectors = new HashMap<>();
+    private final ConcurrentMap<Pair<Integer, ResourceLocation>, S> structureSelectors = new ConcurrentHashMap<>();
 
     private BiFunction<Biome, WorldProvider, S> selectorSupplier;
 
@@ -32,15 +33,15 @@ public class CachedStructureSelectors<S extends StructureSelector>
     public S get(Biome biome, WorldProvider provider)
     {
         Pair<Integer, ResourceLocation> pair = new ImmutablePair<>(provider.getDimension(), Biome.REGISTRY.getNameForObject(biome));
-        S structureSelector = structureSelectors.get(pair);
-
-        if (structureSelector == null || !structureSelector.isValid(biome, provider))
+        return structureSelectors.compute(pair, (key, existing) ->
         {
-            structureSelector = selectorSupplier.apply(biome, provider);
-            structureSelectors.put(pair, structureSelector);
-        }
+            if (existing != null && existing.isValid(biome, provider))
+            {
+                return existing;
+            }
 
-        return structureSelector;
+            return selectorSupplier.apply(biome, provider);
+        });
     }
 
     public void clear()
