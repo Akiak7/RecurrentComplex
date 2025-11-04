@@ -13,6 +13,8 @@ import ivorius.reccomplex.world.gen.feature.structure.generic.transformers.Trans
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 /**
@@ -25,7 +27,7 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
     public static SerializableStringTypeRegistry<Transformer> TRANSFORMERS = new SerializableStringTypeRegistry<>("transformer", "type", Transformer.class);
     public static SerializableStringTypeRegistry<GenerationType> GENERATION_TYPES = new SerializableStringTypeRegistry<>("generationInfo", "type", GenerationType.class);
 
-    private Map<Class<? extends GenerationType>, Collection<Pair<Structure<?>, ? extends GenerationType>>> cachedGeneration = new HashMap<>();
+    private final ConcurrentMap<Class<? extends GenerationType>, Collection<Pair<Structure<?>, ? extends GenerationType>>> cachedGeneration = new ConcurrentHashMap<>();
 
     public StructureRegistry()
     {
@@ -43,21 +45,14 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
 
     public <T extends GenerationType> Collection<Pair<Structure<?>, T>> getGenerationTypes(Class<T> clazz)
     {
+        Collection<Pair<Structure<?>, ? extends GenerationType>> pairs = cachedGeneration.computeIfAbsent(clazz, key ->
+                Collections.unmodifiableList(allActive().stream()
+                        .flatMap(s -> s.generationTypes(clazz).stream()
+                                .map(t -> Pair.of(s, t)))
+                        .collect(Collectors.toList())));
+
         //noinspection unchecked
-        Collection<Pair<Structure<?>, T>> pairs = (Collection<Pair<Structure<?>, T>>) ((Map) cachedGeneration).get(clazz);
-
-        if (pairs == null)
-        {
-            pairs = allActive().stream()
-                    .flatMap(s -> s.generationTypes(clazz).stream()
-                            .<Pair<Structure<?>, T>>map(t -> Pair.of(s, t)))
-                    .collect(Collectors.toList());
-
-            //noinspection unchecked
-            cachedGeneration.put(clazz, (Collection) pairs);
-        }
-
-        return pairs;
+        return (Collection<Pair<Structure<?>, T>>) (Collection<?>) pairs;
     }
 
     @Override
