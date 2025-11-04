@@ -124,7 +124,7 @@ public class WorldStructureGenerationData extends WorldSavedData
         {
             long pos = iterator.nextLong();
             if (checkedChunks.contains(pos))
-                intersection.add(new ChunkPos(ChunkPos.getX(pos), ChunkPos.getZ(pos)));
+                intersection.add(chunkPosFromLong(pos));
         }
 
         return Collections.unmodifiableSet(intersection);
@@ -198,7 +198,7 @@ public class WorldStructureGenerationData extends WorldSavedData
         for (LongIterator iterator = checkedChunks.iterator(); iterator.hasNext(); )
         {
             long pos = iterator.nextLong();
-            checkedChunksList.add(new int[]{ChunkPos.getX(pos), ChunkPos.getZ(pos)});
+            checkedChunksList.add(new int[]{chunkX(pos), chunkZ(pos)});
         }
         NBTTagLists.writeIntArraysTo(compound, "checkedChunks", checkedChunksList);
 
@@ -206,11 +206,26 @@ public class WorldStructureGenerationData extends WorldSavedData
         for (LongIterator iterator = checkedChunksFinal.iterator(); iterator.hasNext(); )
         {
             long pos = iterator.nextLong();
-            checkedChunksFinalList.add(new int[]{ChunkPos.getX(pos), ChunkPos.getZ(pos)});
+            checkedChunksFinalList.add(new int[]{chunkX(pos), chunkZ(pos)});
         }
         NBTTagLists.writeIntArraysTo(compound, "checkedChunksFinal", checkedChunksFinalList);
 
         return compound;
+    }
+
+    private static ChunkPos chunkPosFromLong(long packed)
+    {
+        return new ChunkPos(chunkX(packed), chunkZ(packed));
+    }
+
+    private static int chunkX(long packed)
+    {
+        return (int) (packed & 0xffffffffL);
+    }
+
+    private static int chunkZ(long packed)
+    {
+        return (int) (packed >>> 32);
     }
 
     public static abstract class Entry implements NBTCompoundObject
