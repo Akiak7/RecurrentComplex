@@ -32,6 +32,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -46,7 +47,13 @@ public class WorldGenStructures
 
     public static final int STRUCTURE_TRIES = 10;
 
-    private static final ConcurrentMap<Long, ReentrantLock> CHUNK_LOCKS = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Long, ChunkLockHolder> CHUNK_LOCKS = new ConcurrentHashMap<>();
+
+    private static class ChunkLockHolder
+    {
+        final ReentrantLock lock = new ReentrantLock();
+        final AtomicInteger acquisitions = new AtomicInteger();
+    }
 
     private static long chunkKey(ChunkPos chunkPos)
     {
@@ -58,7 +65,7 @@ public class WorldGenStructures
         return ((long) x & 0xffffffffL) << 32 | ((long) z & 0xffffffffL);
     }
 
-    private static List<ReentrantLock> lockChunks(Stream<ChunkPos> chunkPositions)
+    private static List<Pair<Long, ChunkLockHolder>> lockChunks(Stream<ChunkPos> chunkPositions)
     {
         List<Long> keys = chunkPositions
                 .map(WorldGenStructures::chunkKey)
@@ -66,21 +73,43 @@ public class WorldGenStructures
                 .sorted()
                 .collect(Collectors.toList());
 
-        List<ReentrantLock> locks = new ArrayList<>(keys.size());
+        List<Pair<Long, ChunkLockHolder>> locks = new ArrayList<>(keys.size());
         for (Long key : keys)
         {
-            ReentrantLock lock = CHUNK_LOCKS.computeIfAbsent(key, k -> new ReentrantLock());
-            lock.lock();
-            locks.add(lock);
+            ChunkLockHolder holder = CHUNK_LOCKS.computeIfAbsent(key, k -> new ChunkLockHolder());
+            holder.lock.lock();
+            holder.acquisitions.incrementAndGet();
+            locks.add(Pair.of(key, holder));
         }
 
         return locks;
     }
 
-    private static void unlockChunks(List<ReentrantLock> locks)
+    private static void unlockChunks(List<Pair<Long, ChunkLockHolder>> locks)
     {
         for (int i = locks.size() - 1; i >= 0; i--)
-            locks.get(i).unlock();
+        {
+            Pair<Long, ChunkLockHolder> entry = locks.get(i);
+            ChunkLockHolder holder = entry.getRight();
+
+            holder.lock.unlock();
+
+            if (holder.acquisitions.decrementAndGet() == 0 && !holder.lock.hasQueuedThreads())
+            {
+                if (holder.lock.tryLock())
+                {
+                    try
+                    {
+                        if (holder.acquisitions.get() == 0 && !holder.lock.hasQueuedThreads())
+                            CHUNK_LOCKS.remove(entry.getLeft(), holder);
+                    }
+                    finally
+                    {
+                        holder.lock.unlock();
+                    }
+                }
+            }
+        }
     }
 
     public static void planStaticStructuresInChunk(Random random, ChunkPos chunkPos, WorldServer world, BlockPos spawnPos, @Nullable Predicate<Structure> structurePredicate)
@@ -179,7 +208,7 @@ public class WorldGenStructures
             Set<ChunkPos> relevantChunks = new HashSet<>(entry.rasterize());
             relevantChunks.add(chunkPos);
 
-            List<ReentrantLock> locks = lockChunks(relevantChunks.stream());
+            List<Pair<Long, ChunkLockHolder>> locks = lockChunks(relevantChunks.stream());
             try
             {
                 Structure<?> structure = StructureRegistry.INSTANCE.get(entry.getStructureID());
@@ -260,7 +289,7 @@ public class WorldGenStructures
         if (structurePredicate == null)
             complementStructuresInChunk(chunkPos, world, complement);
 
-        List<ReentrantLock> chunkLocks = lockChunks(Stream.of(chunkPos));
+        List<Pair<Long, ChunkLockHolder>> chunkLocks = lockChunks(Stream.of(chunkPos));
         try
         {
             if ((!RCConfig.honorStructureGenerationOption || worldWantsStructures)
