@@ -5,10 +5,8 @@
 
 package ivorius.reccomplex.world.gen.feature.structure;
 
-import com.google.common.base.Predicates;
-import com.google.common.collect.Collections2;
-import com.google.common.collect.Sets;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import ivorius.reccomplex.world.gen.feature.decoration.RCBiomeDecorator;
@@ -26,8 +24,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import javax.annotation.Nullable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Optional;
 import java.util.Random;
+import java.util.function.LongConsumer;
 
 public class MapGenStructureHook extends MapGenStructure
 {
@@ -152,7 +150,7 @@ public class MapGenStructureHook extends MapGenStructure
 
         base.generate(worldIn, x, z, primer);
 
-        Sets.newHashSet(Collections2.filter(map.keySet(), Predicates.not(Predicates.in(before)))).forEach(key -> {
+        forEachNewStructureKey(map, before, key -> {
             StructureStart start = map.get(key);
 
             if (start.isSizeableStructure())
@@ -176,6 +174,19 @@ public class MapGenStructureHook extends MapGenStructure
                 }
             }
         });
+    }
+
+    static void forEachNewStructureKey(Long2ObjectMap<?> map, LongSet before, LongConsumer consumer)
+    {
+        LongIterator iterator = map.keySet().iterator();
+        while (iterator.hasNext())
+        {
+            long key = iterator.nextLong();
+            if (!before.contains(key))
+            {
+                consumer.accept(key);
+            }
+        }
     }
 
     public RCBiomeDecorator.DecorationType getDecorationType(StructureStart start)
