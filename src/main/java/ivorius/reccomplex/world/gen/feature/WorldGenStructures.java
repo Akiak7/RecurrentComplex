@@ -25,10 +25,17 @@ import net.minecraft.world.biome.Biome;
 import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Created by lukas on 24.05.14.
@@ -38,6 +45,43 @@ public class WorldGenStructures
     public static final long POS_SEED = 1298319823120938102L;
 
     public static final int STRUCTURE_TRIES = 10;
+
+    private static final ConcurrentMap<Long, ReentrantLock> CHUNK_LOCKS = new ConcurrentHashMap<>();
+
+    private static long chunkKey(ChunkPos chunkPos)
+    {
+        return chunkKey(chunkPos.x, chunkPos.z);
+    }
+
+    private static long chunkKey(int x, int z)
+    {
+        return ((long) x & 0xffffffffL) << 32 | ((long) z & 0xffffffffL);
+    }
+
+    private static List<ReentrantLock> lockChunks(Stream<ChunkPos> chunkPositions)
+    {
+        List<Long> keys = chunkPositions
+                .map(WorldGenStructures::chunkKey)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+
+        List<ReentrantLock> locks = new ArrayList<>(keys.size());
+        for (Long key : keys)
+        {
+            ReentrantLock lock = CHUNK_LOCKS.computeIfAbsent(key, k -> new ReentrantLock());
+            lock.lock();
+            locks.add(lock);
+        }
+
+        return locks;
+    }
+
+    private static void unlockChunks(List<ReentrantLock> locks)
+    {
+        for (int i = locks.size() - 1; i >= 0; i--)
+            locks.get(i).unlock();
+    }
 
     public static void planStaticStructuresInChunk(Random random, ChunkPos chunkPos, WorldServer world, BlockPos spawnPos, @Nullable Predicate<Structure> structurePredicate)
     {
@@ -127,35 +171,49 @@ public class WorldGenStructures
     {
         WorldStructureGenerationData data = WorldStructureGenerationData.get(world);
 
-        complement.stream().filter(e -> !e.preventComplementation()).forEach(entry ->
+        for (WorldStructureGenerationData.StructureEntry entry : complement)
         {
-            Structure<?> structure = StructureRegistry.INSTANCE.get(entry.getStructureID());
+            if (entry.preventComplementation())
+                continue;
 
-            if (structure == null)
+            Set<ChunkPos> relevantChunks = new HashSet<>(entry.rasterize());
+            relevantChunks.add(chunkPos);
+
+            List<ReentrantLock> locks = lockChunks(relevantChunks.stream());
+            try
             {
-                RecurrentComplex.logger.warn(String.format("Can't find structure %s (%s) to complement in %s (%d)", entry.getStructureID(), entry.getUuid(), chunkPos, world.provider.getDimension()));
-                return;
-            }
+                Structure<?> structure = StructureRegistry.INSTANCE.get(entry.getStructureID());
 
-            if (entry.instanceData == null && !entry.firstTime)
+                if (structure == null)
+                {
+                    RecurrentComplex.logger.warn(String.format("Can't find structure %s (%s) to complement in %s (%d)", entry.getStructureID(), entry.getUuid(), chunkPos, world.provider.getDimension()));
+                    continue;
+                }
+
+                if (entry.instanceData == null && !entry.firstTime)
+                {
+                    RecurrentComplex.logger.warn(String.format("Can't find instance data of %s (%s) to complement in %s (%d)", entry.getStructureID(), entry.getUuid(), chunkPos, world.provider.getDimension()));
+                    continue;
+                }
+
+                new StructureGenerator<>(structure).world(world).generationInfo(entry.generationInfoID)
+                        .seed(chunkSeed(entry.seed, chunkPos)).boundingBox(entry.boundingBox).transform(entry.transform).generationBB(Structures.chunkBoundingBox(chunkPos, true))
+                        .structureID(entry.getStructureID()).instanceData(entry.instanceData)
+                        // Could use entry.firstTime but then StructureGenerator would add a new entry
+                        .maturity(StructureSpawnContext.GenerateMaturity.COMPLEMENT)
+                        .generate();
+
+                if (entry.firstTime)
+                {
+                    entry.firstTime = false;
+                    data.markDirty();
+                }
+            }
+            finally
             {
-                RecurrentComplex.logger.warn(String.format("Can't find instance data of %s (%s) to complement in %s (%d)", entry.getStructureID(), entry.getUuid(), chunkPos, world.provider.getDimension()));
-                return;
+                unlockChunks(locks);
             }
-
-            new StructureGenerator<>(structure).world(world).generationInfo(entry.generationInfoID)
-                    .seed(chunkSeed(entry.seed, chunkPos)).boundingBox(entry.boundingBox).transform(entry.transform).generationBB(Structures.chunkBoundingBox(chunkPos, true))
-                    .structureID(entry.getStructureID()).instanceData(entry.instanceData)
-                    // Could use entry.firstTime but then StructureGenerator would add a new entry
-                    .maturity(StructureSpawnContext.GenerateMaturity.COMPLEMENT)
-                    .generate();
-
-            if (entry.firstTime)
-            {
-                entry.firstTime = false;
-                data.markDirty();
-            }
-        });
+        }
     }
 
     public static long chunkSeed(long seed, ChunkPos chunkPos)
@@ -188,26 +246,17 @@ public class WorldGenStructures
 
         // We need to synchronize (multithreaded gen) since we need to plan structures before complementing,
         // otherwise structures get lost in some chunks
-        synchronized (data)
+        List<ReentrantLock> chunkLocks = lockChunks(Stream.of(chunkPos));
+        try
         {
-            // TODO Synchronize on chunk pos instead (need to make sure these are only added on same sync though)
-
             List<WorldStructureGenerationData.StructureEntry> complement = data.structureEntriesIn(chunkPos).collect(Collectors.toList());
             if (structurePredicate == null)
                 data.checkChunk(chunkPos);
-
-            // Complement before generating so we don't complement newly planned structures:
-            // Chunk checked
-            // Structure starts generating
-            // Triggers other chunks, sight doesn't exist yet so no complementation in those
-            // Structure stops generating and adds entry
-            // Other structures that generated into this one are not complemented into it because complementation happened already
 
             if (structurePredicate == null)
                 complementStructuresInChunk(chunkPos, world, complement);
 
             if ((!RCConfig.honorStructureGenerationOption || worldWantsStructures)
-                    // If partially spawn, check chunks as having tried to add partial structures as into the thingy
                     && (structurePredicate == null || !RecurrentComplex.PARTIALLY_SPAWN_NATURAL_STRUCTURES || data.checkChunkFinal(chunkPos)))
             {
                 Biome biomeGen = world.getBiome(chunkPos.getBlock(8, 0, 8));
@@ -228,6 +277,10 @@ public class WorldGenStructures
 
                 generated = true;
             }
+        }
+        finally
+        {
+            unlockChunks(chunkLocks);
         }
 
         return generated;
