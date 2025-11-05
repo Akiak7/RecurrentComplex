@@ -258,7 +258,15 @@ public class StructureRegistryConcurrencyTest
         @Override
         public Structure register(String id, String domain, Structure structure, boolean active, LeveledRegistry.ILevel level)
         {
-            return super.register(id, domain, structure, active && structure.areDependenciesResolved(), level);
+            activeCacheValid = false;
+
+            stati.put(id, new Status(id, active && structure.areDependenciesResolved(), domain, level), level.getLevel());
+            Structure<?> old = items.put(id, structure, level.getLevel());
+
+            super.invalidateCaches();
+
+            //noinspection unchecked
+            return (Structure) old;
         }
     }
 }
