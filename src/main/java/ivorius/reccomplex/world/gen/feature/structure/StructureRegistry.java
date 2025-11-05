@@ -15,7 +15,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Collectors;
 
 /**
  * Created by lukas on 24.05.14.
@@ -27,7 +26,7 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
     public static SerializableStringTypeRegistry<Transformer> TRANSFORMERS = new SerializableStringTypeRegistry<>("transformer", "type", Transformer.class);
     public static SerializableStringTypeRegistry<GenerationType> GENERATION_TYPES = new SerializableStringTypeRegistry<>("generationInfo", "type", GenerationType.class);
 
-    private final ConcurrentMap<Class<? extends GenerationType>, Collection<Pair<Structure<?>, ? extends GenerationType>>> cachedGeneration = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Class<? extends GenerationType>, List<Pair<Structure<?>, GenerationType>>> cachedGeneration = new ConcurrentHashMap<>();
 
     public StructureRegistry()
     {
@@ -45,14 +44,25 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
 
     public <T extends GenerationType> Collection<Pair<Structure<?>, T>> getGenerationTypes(Class<T> clazz)
     {
-        Collection<Pair<Structure<?>, ? extends GenerationType>> pairs = cachedGeneration.computeIfAbsent(clazz, key ->
-                Collections.unmodifiableList(allActive().stream()
-                        .flatMap(s -> s.generationTypes(clazz).stream()
-                                .map(t -> Pair.of(s, t)))
-                        .collect(Collectors.toList())));
+        List<Pair<Structure<?>, GenerationType>> pairs = cachedGeneration.computeIfAbsent(clazz, key -> buildGenerationPairs(clazz));
 
         //noinspection unchecked
         return (Collection<Pair<Structure<?>, T>>) (Collection<?>) pairs;
+    }
+
+    private <T extends GenerationType> List<Pair<Structure<?>, GenerationType>> buildGenerationPairs(Class<T> clazz)
+    {
+        List<Pair<Structure<?>, GenerationType>> pairs = new ArrayList<>();
+
+        for (Structure<?> structure : allActive())
+        {
+            for (T generationType : structure.generationTypes(clazz))
+            {
+                pairs.add(Pair.of(structure, generationType));
+            }
+        }
+
+        return Collections.unmodifiableList(pairs);
     }
 
     @Override
