@@ -47,7 +47,7 @@ public class StructureRegistryConcurrencyTest
     @Test
     public void cachesAreBuiltOncePerGenerationType() throws Exception
     {
-        StructureRegistry registry = new StructureRegistry();
+        StructureRegistry registry = new TestStructureRegistry();
         AtomicInteger generationCalls = new AtomicInteger();
         int structureCount = 10;
 
@@ -250,6 +250,15 @@ public class StructureRegistryConcurrencyTest
         public TableDataSource tableDataSource(MazeVisualizationContext mazeVisualizationContext, TableNavigator navigator, TableDelegate delegate)
         {
             return null;
+        }
+    }
+
+    private static class TestStructureRegistry extends StructureRegistry
+    {
+        @Override
+        public Structure register(String id, String domain, Structure structure, boolean active, LeveledRegistry.ILevel level)
+        {
+            return super.register(id, domain, structure, active && structure.areDependenciesResolved(), level);
         }
     }
 }
