@@ -1,6 +1,7 @@
 package ivorius.reccomplex.world.gen.feature.structure;
 
 import ivorius.ivtoolkit.blocks.IvBlockCollection;
+import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.client.rendering.MazeVisualizationContext;
 import ivorius.reccomplex.files.loading.LeveledRegistry;
 import ivorius.reccomplex.gui.table.TableDelegate;
@@ -20,7 +21,9 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.logging.log4j.LogManager;
 import org.junit.Assert;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import javax.annotation.Nonnull;
@@ -99,6 +102,15 @@ public class StructureRegistryConcurrencyTest
         Collection<Pair<Structure<?>, TestGenerationType>> rebuilt = registry.getGenerationTypes(TestGenerationType.class);
         assertEquals(structureCount, rebuilt.size());
         assertEquals("Cache should rebuild after invalidation", structureCount * 2, generationCalls.get());
+    }
+
+    @BeforeClass
+    public static void setUpLogging()
+    {
+        if (RecurrentComplex.logger == null)
+        {
+            RecurrentComplex.logger = LogManager.getLogger("reccomplex-test");
+        }
     }
 
     private static class TestStructure implements Structure<TestInstanceData>
