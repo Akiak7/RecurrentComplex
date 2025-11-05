@@ -39,7 +39,7 @@ public class CachedStructureSelectorsTest
             return new TestStructureSelector(provider, biome);
         });
 
-        TestBiome biome = new TestBiome();
+        Biome biome = null;
         WorldProvider provider = new TestWorldProvider();
 
         int threads = 16;
@@ -83,7 +83,7 @@ public class CachedStructureSelectorsTest
     {
         private volatile boolean valid = true;
 
-        TestStructureSelector(WorldProvider provider, Biome biome)
+        TestStructureSelector(WorldProvider provider, @Nullable Biome biome)
         {
             super(Collections.emptyMap(), provider, biome, TestGenerationType.class);
         }
@@ -108,7 +108,7 @@ public class CachedStructureSelectorsTest
         }
 
         @Override
-        public double getGenerationWeight(WorldProvider provider, Biome biome)
+        public double getGenerationWeight(WorldProvider provider, @Nullable Biome biome)
         {
             return 0;
         }
@@ -144,14 +144,6 @@ public class CachedStructureSelectorsTest
     private enum TestCategory
     {
         INSTANCE
-    }
-
-    private static class TestBiome extends Biome
-    {
-        protected TestBiome()
-        {
-            super(new Biome.BiomeProperties("test"));
-        }
     }
 
     private static class TestWorldProvider extends WorldProvider implements DimensionDictionary.Handler
