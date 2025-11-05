@@ -25,6 +25,8 @@ public class CachedStructureSelectors<S extends StructureSelector>
 
     private BiFunction<Biome, WorldProvider, S> selectorSupplier;
 
+    private static final ResourceLocation NULL_BIOME_KEY = new ResourceLocation("reccomplex", "null_biome");
+
     public CachedStructureSelectors(BiFunction<Biome, WorldProvider, S> selectorSupplier)
     {
         this.selectorSupplier = selectorSupplier;
@@ -32,7 +34,7 @@ public class CachedStructureSelectors<S extends StructureSelector>
 
     public S get(Biome biome, WorldProvider provider)
     {
-        Pair<Integer, ResourceLocation> pair = new ImmutablePair<>(provider.getDimension(), Biome.REGISTRY.getNameForObject(biome));
+        Pair<Integer, ResourceLocation> pair = new ImmutablePair<>(provider.getDimension(), resolveBiomeKey(biome));
         return structureSelectors.compute(pair, (key, existing) ->
         {
             if (existing != null && existing.isValid(biome, provider))
@@ -42,6 +44,22 @@ public class CachedStructureSelectors<S extends StructureSelector>
 
             return selectorSupplier.apply(biome, provider);
         });
+    }
+
+    private static ResourceLocation resolveBiomeKey(Biome biome)
+    {
+        if (biome == null)
+        {
+            return NULL_BIOME_KEY;
+        }
+
+        ResourceLocation key = Biome.REGISTRY.getNameForObject(biome);
+        if (key != null)
+        {
+            return key;
+        }
+
+        return new ResourceLocation("reccomplex", "synthetic/" + System.identityHashCode(biome));
     }
 
     public void clear()
