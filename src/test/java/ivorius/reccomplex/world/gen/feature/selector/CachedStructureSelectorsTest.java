@@ -160,7 +160,7 @@ public class CachedStructureSelectorsTest
 
         private TestWorldProvider()
         {
-            this.dimension = 0;
+            this.setDimension(0);
         }
 
         @Override
