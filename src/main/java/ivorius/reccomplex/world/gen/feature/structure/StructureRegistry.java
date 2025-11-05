@@ -26,8 +26,8 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
     public static SerializableStringTypeRegistry<Transformer> TRANSFORMERS = new SerializableStringTypeRegistry<>("transformer", "type", Transformer.class);
     public static SerializableStringTypeRegistry<GenerationType> GENERATION_TYPES = new SerializableStringTypeRegistry<>("generationInfo", "type", GenerationType.class);
 
-    private final ConcurrentMap<Class<? extends GenerationType>, List<Pair<Structure<?>, GenerationType>>> cachedGeneration = new ConcurrentHashMap<>();
-    private final ConcurrentMap<Class<? extends GenerationType>, Object> cacheLocks = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Class<? extends GenerationType>, CacheEntry> cachedGeneration = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicLong cacheVersion = new java.util.concurrent.atomic.AtomicLong();
 
     public StructureRegistry()
     {
@@ -45,26 +45,43 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
 
     public <T extends GenerationType> Collection<Pair<Structure<?>, T>> getGenerationTypes(Class<T> clazz)
     {
-        List<Pair<Structure<?>, GenerationType>> pairs = cachedGeneration.get(clazz);
+        CacheEntry entry = cachedGeneration.computeIfAbsent(clazz, key -> new CacheEntry());
 
-        if (pairs == null)
+        while (true)
         {
-            Object lock = cacheLocks.computeIfAbsent(clazz, key -> new Object());
+            long version = cacheVersion.get();
+            List<Pair<Structure<?>, GenerationType>> pairs = entry.pairs;
 
-            synchronized (lock)
+            if (pairs != null && entry.version == version)
             {
-                pairs = cachedGeneration.get(clazz);
+                //noinspection unchecked
+                return (Collection<Pair<Structure<?>, T>>) (Collection<?>) pairs;
+            }
 
-                if (pairs == null)
+            synchronized (entry.lock)
+            {
+                version = cacheVersion.get();
+                pairs = entry.pairs;
+
+                if (pairs != null && entry.version == version)
                 {
-                    pairs = buildGenerationPairs(clazz);
-                    cachedGeneration.put(clazz, pairs);
+                    continue;
                 }
+
+                pairs = buildGenerationPairs(clazz);
+
+                if (cacheVersion.get() == version)
+                {
+                    entry.pairs = pairs;
+                    entry.version = version;
+                    //noinspection unchecked
+                    return (Collection<Pair<Structure<?>, T>>) (Collection<?>) pairs;
+                }
+
+                entry.pairs = null;
+                entry.version = -1;
             }
         }
-
-        //noinspection unchecked
-        return (Collection<Pair<Structure<?>, T>>) (Collection<?>) pairs;
     }
 
     private <T extends GenerationType> List<Pair<Structure<?>, GenerationType>> buildGenerationPairs(Class<T> clazz)
@@ -86,8 +103,15 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
     protected void invalidateCaches()
     {
         super.invalidateCaches();
-        cachedGeneration.clear();
-        cacheLocks.clear();
+        cacheVersion.incrementAndGet();
+        cachedGeneration.values().forEach(entry ->
+        {
+            synchronized (entry.lock)
+            {
+                entry.pairs = null;
+                entry.version = -1;
+            }
+        });
     }
 
     private static class StructureData
@@ -100,5 +124,12 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
             this.disabled = disabled;
             this.domain = domain;
         }
+    }
+
+    private static class CacheEntry
+    {
+        final Object lock = new Object();
+        volatile List<Pair<Structure<?>, GenerationType>> pairs;
+        volatile long version = -1;
     }
 }
