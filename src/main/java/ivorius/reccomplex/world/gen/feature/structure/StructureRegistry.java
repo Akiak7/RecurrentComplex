@@ -13,7 +13,8 @@ import ivorius.reccomplex.world.gen.feature.structure.generic.transformers.Trans
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Created by lukas on 24.05.14.
@@ -25,7 +26,7 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
     public static SerializableStringTypeRegistry<Transformer> TRANSFORMERS = new SerializableStringTypeRegistry<>("transformer", "type", Transformer.class);
     public static SerializableStringTypeRegistry<GenerationType> GENERATION_TYPES = new SerializableStringTypeRegistry<>("generationInfo", "type", GenerationType.class);
 
-    private Map<Class<? extends GenerationType>, Collection<Pair<Structure<?>, ? extends GenerationType>>> cachedGeneration = new HashMap<>();
+    private final ConcurrentMap<Class<? extends GenerationType>, List<Pair<Structure<?>, GenerationType>>> cachedGeneration = new ConcurrentHashMap<>();
 
     public StructureRegistry()
     {
@@ -43,21 +44,25 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
 
     public <T extends GenerationType> Collection<Pair<Structure<?>, T>> getGenerationTypes(Class<T> clazz)
     {
+        List<Pair<Structure<?>, GenerationType>> pairs = cachedGeneration.computeIfAbsent(clazz, key -> buildGenerationPairs(clazz));
+
         //noinspection unchecked
-        Collection<Pair<Structure<?>, T>> pairs = (Collection<Pair<Structure<?>, T>>) ((Map) cachedGeneration).get(clazz);
+        return (Collection<Pair<Structure<?>, T>>) (Collection<?>) pairs;
+    }
 
-        if (pairs == null)
+    private <T extends GenerationType> List<Pair<Structure<?>, GenerationType>> buildGenerationPairs(Class<T> clazz)
+    {
+        List<Pair<Structure<?>, GenerationType>> pairs = new ArrayList<>();
+
+        for (Structure<?> structure : allActive())
         {
-            pairs = allActive().stream()
-                    .flatMap(s -> s.generationTypes(clazz).stream()
-                            .<Pair<Structure<?>, T>>map(t -> Pair.of(s, t)))
-                    .collect(Collectors.toList());
-
-            //noinspection unchecked
-            cachedGeneration.put(clazz, (Collection) pairs);
+            for (T generationType : structure.generationTypes(clazz))
+            {
+                pairs.add(Pair.of(structure, generationType));
+            }
         }
 
-        return pairs;
+        return Collections.unmodifiableList(pairs);
     }
 
     @Override
