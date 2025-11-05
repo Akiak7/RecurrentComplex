@@ -138,7 +138,8 @@ public class SimpleLeveledRegistry<S> implements LeveledRegistry<S>
         stati.put(id, new Status(id, active, domain, level), level.getLevel());
         S old = items.put(id, s, level.getLevel());
 
-        RecurrentComplex.logger.trace(String.format(old != null ? "Replaced %s '%s' at level %s" : "Registered %s '%s' at level %s", description, id, level));
+        if (RecurrentComplex.logger != null)
+            RecurrentComplex.logger.trace(String.format(old != null ? "Replaced %s '%s' at level %s" : "Registered %s '%s' at level %s", description, id, level));
 
         invalidateCaches();
 
@@ -157,7 +158,8 @@ public class SimpleLeveledRegistry<S> implements LeveledRegistry<S>
     @Override
     public void clear(ILevel level)
     {
-        RecurrentComplex.logger.trace(String.format("Cleared all %s at level %s", description, level));
+        if (RecurrentComplex.logger != null)
+            RecurrentComplex.logger.trace(String.format("Cleared all %s at level %s", description, level));
         invalidateActiveCache();
         items.clear(level.getLevel());
         stati.clear(level.getLevel());
