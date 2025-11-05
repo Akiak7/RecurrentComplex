@@ -27,6 +27,7 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
     public static SerializableStringTypeRegistry<GenerationType> GENERATION_TYPES = new SerializableStringTypeRegistry<>("generationInfo", "type", GenerationType.class);
 
     private final ConcurrentMap<Class<? extends GenerationType>, List<Pair<Structure<?>, GenerationType>>> cachedGeneration = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Class<? extends GenerationType>, Object> cacheLocks = new ConcurrentHashMap<>();
 
     public StructureRegistry()
     {
@@ -44,7 +45,23 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
 
     public <T extends GenerationType> Collection<Pair<Structure<?>, T>> getGenerationTypes(Class<T> clazz)
     {
-        List<Pair<Structure<?>, GenerationType>> pairs = cachedGeneration.computeIfAbsent(clazz, key -> buildGenerationPairs(clazz));
+        List<Pair<Structure<?>, GenerationType>> pairs = cachedGeneration.get(clazz);
+
+        if (pairs == null)
+        {
+            Object lock = cacheLocks.computeIfAbsent(clazz, key -> new Object());
+
+            synchronized (lock)
+            {
+                pairs = cachedGeneration.get(clazz);
+
+                if (pairs == null)
+                {
+                    pairs = buildGenerationPairs(clazz);
+                    cachedGeneration.put(clazz, pairs);
+                }
+            }
+        }
 
         //noinspection unchecked
         return (Collection<Pair<Structure<?>, T>>) (Collection<?>) pairs;
@@ -70,6 +87,7 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
     {
         super.invalidateCaches();
         cachedGeneration.clear();
+        cacheLocks.clear();
     }
 
     private static class StructureData
