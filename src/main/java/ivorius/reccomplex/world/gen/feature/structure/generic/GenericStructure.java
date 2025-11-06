@@ -51,6 +51,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.ResourceLocationException;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3i;
 import net.minecraft.util.text.TextComponentBase;
@@ -241,7 +242,12 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
             double[] transformedEntityPos = context.transform.applyOn(getEntityPos(entityCompound), areaSize);
             if (context.includes(new Vec3i(transformedEntityPos[0] + origin.getX(), transformedEntityPos[1] + origin.getY(), transformedEntityPos[2] + origin.getZ()))) {
                 String entityIdString = entityCompound.getString("id");
-                ResourceLocation entityId = ResourceLocation.tryCreate(entityIdString);
+                ResourceLocation entityId;
+                try {
+                    entityId = new ResourceLocation(entityIdString);
+                } catch (ResourceLocationException | IllegalArgumentException e) {
+                    entityId = null;
+                }
 
                 if (entityId == null) {
                     invalidEntityIds.merge(entityIdString.isEmpty() ? "<empty>" : entityIdString, 1, Integer::sum);
