@@ -60,7 +60,9 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.IOException;
 import java.lang.reflect.Type;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -78,6 +80,9 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
     public final DependencyExpression dependencies = new DependencyExpression();
 
     public NBTTagCompound worldDataCompound;
+    protected transient Path sanitizedWorldDataPath;
+    protected transient String sanitizedWorldDataHash;
+    protected transient boolean sanitizedWorldDataResolved;
 
     public boolean rotatable;
     public boolean mirrorable;
@@ -147,7 +152,7 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
     @Override
     public int[] size()
     {
-        return Structures.size(worldDataCompound, new int[]{0, 0, 0});
+        return Structures.size(resolvedWorldDataCompound(), new int[]{0, 0, 0});
     }
 
     @Override
@@ -326,7 +331,41 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
 
     public IvWorldData constructWorldData()
     {
-        return new IvWorldData(worldDataCompound, RecurrentComplex.specialRegistry.itemHidingMode());
+        NBTTagCompound data = resolvedWorldDataCompound();
+        return new IvWorldData(data != null ? data : new NBTTagCompound(), RecurrentComplex.specialRegistry.itemHidingMode());
+    }
+
+    void applySanitizedWorldData(@Nullable NBTTagCompound sanitizedWorldData, @Nullable Path cachePath, @Nullable String sourceHash)
+    {
+        if (sanitizedWorldData != null)
+            worldDataCompound = sanitizedWorldData;
+
+        sanitizedWorldDataPath = cachePath;
+        sanitizedWorldDataHash = sourceHash;
+        sanitizedWorldDataResolved = sanitizedWorldData != null || cachePath == null;
+    }
+
+    private NBTTagCompound resolvedWorldDataCompound()
+    {
+        if (!sanitizedWorldDataResolved)
+        {
+            sanitizedWorldDataResolved = true;
+            if (sanitizedWorldDataPath != null && sanitizedWorldDataHash != null)
+            {
+                try
+                {
+                    NBTTagCompound cached = StructureWorldDataSanitizer.readCache(sanitizedWorldDataPath, sanitizedWorldDataHash);
+                    if (cached != null)
+                        worldDataCompound = cached;
+                }
+                catch (IOException e)
+                {
+                    RecurrentComplex.logger.warn("Failed to read sanitized structure cache {}", sanitizedWorldDataPath, e);
+                }
+            }
+        }
+
+        return worldDataCompound;
     }
 
     @Nonnull
@@ -397,8 +436,9 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
 
     public GenericStructure copy()
     {
+        NBTTagCompound resolved = resolvedWorldDataCompound();
         return StructureSaveHandler.INSTANCE.fromJSON(StructureSaveHandler.INSTANCE.toJSON(this),
-                worldDataCompound.copy());
+                resolved != null ? resolved.copy() : null);
     }
 
     public static class Serializer implements JsonDeserializer<GenericStructure>, JsonSerializer<GenericStructure>
