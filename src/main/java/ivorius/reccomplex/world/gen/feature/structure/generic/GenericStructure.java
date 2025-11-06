@@ -58,6 +58,7 @@ import net.minecraft.util.text.TextComponentString;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.gen.structure.StructureBoundingBox;
 import net.minecraftforge.common.util.Constants;
+import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nonnull;
@@ -264,8 +265,17 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
                     world.spawnEntity(entity);
                 }
                 else {
-                    MissingEntityCache.recordSkip(entityId);
-                    skippedEntities.merge(entityId, 1, Integer::sum);
+                    if (!ForgeRegistries.ENTITIES.containsKey(entityId)) {
+                        MissingEntityCache.recordSkip(entityId);
+                        skippedEntities.merge(entityId, 1, Integer::sum);
+                    }
+                    else {
+                        RecurrentComplex.logger.warn(
+                                "Failed to instantiate registered entity {} while generating structure at {} in dimension {}; skipping corrupted entity NBT.",
+                                entityId,
+                                context.boundingBox,
+                                world.provider.getDimension());
+                    }
                 }
             }
         }
