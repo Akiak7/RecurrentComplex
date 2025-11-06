@@ -9,6 +9,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import ivorius.reccomplex.utils.ReflectionCompat;
 import ivorius.reccomplex.world.gen.feature.decoration.RCBiomeDecorator;
 import ivorius.reccomplex.world.gen.feature.structure.generic.generation.VanillaDecorationGeneration;
 import net.minecraft.util.math.BlockPos;
@@ -45,7 +46,7 @@ public class MapGenStructureHook extends MapGenStructure
 
     public static Long2ObjectMap<StructureStart> getStructureMap(MapGenStructure gen)
     {
-        return ReflectionHelper.getPrivateValue(MapGenStructure.class, gen, "structureMap", "field_75053_d");
+        return ReflectionCompat.get(STRUCTURE_MAP_FIELD, gen);
     }
 
     public static void initializeStructureData(MapGenStructure gen, World world)
@@ -193,4 +194,8 @@ public class MapGenStructureHook extends MapGenStructure
     {
         return decorationType;
     }
+
+    private static final java.lang.reflect.Field STRUCTURE_MAP_FIELD = ReflectionCompat.findField(MapGenStructure.class,
+            field -> Long2ObjectMap.class.isAssignableFrom(field.getType()),
+            "structureMap", "field_75053_d");
 }

@@ -9,11 +9,11 @@ import com.google.common.collect.Lists;
 import ivorius.reccomplex.gui.table.GuiTable;
 import ivorius.reccomplex.gui.table.TableDelegate;
 import ivorius.reccomplex.gui.table.TableNavigator;
+import ivorius.reccomplex.utils.ReflectionCompat;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.lwjgl.input.Keyboard;
@@ -68,7 +68,7 @@ public class GuiScreenModalTable extends GuiScreen implements TableDelegate, Tab
                     }
                     ////////
 //                    this.selectedButton = event.button;
-                    ReflectionHelper.setPrivateValue(GuiScreen.class, this, event.getButton(), "selectedButton", "field_146290_a");
+                    ReflectionCompat.set(SELECTED_BUTTON_FIELD, this, event.getButton());
                     ////////
                     event.getButton().playPressSound(this.mc.getSoundHandler());
                     this.actionPerformed(event.getButton());
@@ -251,4 +251,7 @@ public class GuiScreenModalTable extends GuiScreen implements TableDelegate, Tab
     {
         tableStack.peek().setLocked(cell, lock);
     }
+    private static final java.lang.reflect.Field SELECTED_BUTTON_FIELD = ReflectionCompat.findField(GuiScreen.class,
+            field -> GuiButton.class.isAssignableFrom(field.getType()),
+            "selectedButton", "field_146290_a");
 }

@@ -5,7 +5,7 @@
 
 package ivorius.reccomplex.utils.accessor;
 
-import net.minecraftforge.fml.relauncher.ReflectionHelper;
+import ivorius.reccomplex.utils.ReflectionCompat;
 import net.minecraft.entity.Entity;
 
 import java.lang.reflect.Field;
@@ -21,7 +21,9 @@ public class RCAccessorEntity
     private static void initializeUniqueID()
     {
         if (uniqueID == null)
-            uniqueID = ReflectionHelper.findField(Entity.class, "entityUniqueID", "field_96093_i");
+            uniqueID = ReflectionCompat.findField(Entity.class,
+                    field -> UUID.class.isAssignableFrom(field.getType()),
+                    "entityUniqueID", "field_96093_i");
     }
 
     public static void setEntityUniqueID(Entity entity, UUID uuid)

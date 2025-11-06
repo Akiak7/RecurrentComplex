@@ -12,9 +12,9 @@ import ivorius.reccomplex.gui.table.TableDelegate;
 import ivorius.reccomplex.gui.table.TableNavigator;
 import ivorius.reccomplex.gui.table.cell.*;
 import ivorius.reccomplex.json.NBTTagEndSerializer;
+import ivorius.reccomplex.utils.ReflectionCompat;
 import net.minecraft.nbt.*;
 import net.minecraftforge.common.util.Constants;
-import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.apache.commons.lang3.ArrayUtils;
@@ -74,7 +74,7 @@ public class TableDataSourceNBT
             {
                 if (value >= Byte.MIN_VALUE && value <= Byte.MAX_VALUE)
                 {
-                    ReflectionHelper.setPrivateValue(NBTTagByte.class, cNBT, (byte) (int) value, "data", "field_74756_a");
+                    ReflectionCompat.set(NBT_TAG_BYTE_DATA, cNBT, (byte) (int) value);
                     cell.setValidityState(GuiValidityStateIndicator.State.VALID);
                 }
                 else
@@ -90,7 +90,7 @@ public class TableDataSourceNBT
             {
                 if (value >= Short.MIN_VALUE && value <= Short.MAX_VALUE)
                 {
-                    ReflectionHelper.setPrivateValue(NBTTagShort.class, cNBT, (short) (int) value, "data", "field_74752_a");
+                    ReflectionCompat.set(NBT_TAG_SHORT_DATA, cNBT, (short) (int) value);
                     cell.setValidityState(GuiValidityStateIndicator.State.VALID);
                 }
                 else
@@ -102,31 +102,28 @@ public class TableDataSourceNBT
         {
             NBTTagInt cNBT = (NBTTagInt) nbt;
             TableCellIntTextField cell = new TableCellIntTextField(null, cNBT.getInt());
-            cell.addListener(value -> ReflectionHelper.setPrivateValue(NBTTagInt.class, cNBT, value, "data", "field_74748_a"));
+            cell.addListener(value -> ReflectionCompat.set(NBT_TAG_INT_DATA, cNBT, value));
             return cell;
         }
         else if (nbt instanceof NBTTagLong)
         {
             NBTTagLong cNBT = (NBTTagLong) nbt;
             TableCellStringLong cell = new TableCellStringLong(null, cNBT.getLong());
-            cell.addListener(value ->
-                    ReflectionHelper.setPrivateValue(NBTTagLong.class, cNBT, value, "data", "field_74753_a"));
+            cell.addListener(value -> ReflectionCompat.set(NBT_TAG_LONG_DATA, cNBT, value));
             return cell;
         }
         else if (nbt instanceof NBTTagFloat)
         {
             NBTTagFloat cNBT = (NBTTagFloat) nbt;
             TableCellStringDouble cell = new TableCellStringDouble(null, cNBT.getDouble());
-            cell.addListener(value ->
-                    ReflectionHelper.setPrivateValue(NBTTagFloat.class, cNBT, (float) (double) value, "data", "field_74750_a"));
+            cell.addListener(value -> ReflectionCompat.set(NBT_TAG_FLOAT_DATA, cNBT, (float) (double) value));
             return cell;
         }
         else if (nbt instanceof NBTTagDouble)
         {
             NBTTagDouble cNBT = (NBTTagDouble) nbt;
             TableCellStringDouble cell = new TableCellStringDouble(null, cNBT.getDouble());
-            cell.addListener(value ->
-                    ReflectionHelper.setPrivateValue(NBTTagDouble.class, cNBT, value, "data", "field_74755_a"));
+            cell.addListener(value -> ReflectionCompat.set(NBT_TAG_DOUBLE_DATA, cNBT, value));
             return cell;
         }
         else if (nbt instanceof NBTTagByteArray)
@@ -144,7 +141,7 @@ public class TableDataSourceNBT
                 else
                 {
                     cell.setValidityState(GuiValidityStateIndicator.State.VALID);
-                    ReflectionHelper.setPrivateValue(NBTTagByteArray.class, cNBT, bytes, "data", "field_74754_a");
+                    ReflectionCompat.set(NBT_TAG_BYTE_ARRAY_DATA, cNBT, bytes);
                 }
             });
             return cell;
@@ -154,8 +151,7 @@ public class TableDataSourceNBT
         {
             NBTTagString cNBT = (NBTTagString) nbt;
             TableCellString cell = new TableCellString(null, cNBT.getString());
-            cell.addListener(value ->
-                    ReflectionHelper.setPrivateValue(NBTTagString.class, cNBT, value, "data", "field_74751_a"));
+            cell.addListener(value -> ReflectionCompat.set(NBT_TAG_STRING_DATA, cNBT, value));
             return cell;
         }
         else if (nbt instanceof NBTTagList)
@@ -185,7 +181,7 @@ public class TableDataSourceNBT
                 else
                 {
                     cell.setValidityState(GuiValidityStateIndicator.State.VALID);
-                    ReflectionHelper.setPrivateValue(NBTTagIntArray.class, cNBT, ints, "intArray", "field_74749_a");
+                    ReflectionCompat.set(NBT_TAG_INT_ARRAY_DATA, cNBT, ints);
                 }
             });
             return cell;
@@ -242,6 +238,34 @@ public class TableDataSourceNBT
 
         return ints;
     }
+
+    private static final java.lang.reflect.Field NBT_TAG_BYTE_DATA = ReflectionCompat.findField(NBTTagByte.class,
+            field -> field.getType() == byte.class,
+            "data", "field_74756_a");
+    private static final java.lang.reflect.Field NBT_TAG_SHORT_DATA = ReflectionCompat.findField(NBTTagShort.class,
+            field -> field.getType() == short.class,
+            "data", "field_74752_a");
+    private static final java.lang.reflect.Field NBT_TAG_INT_DATA = ReflectionCompat.findField(NBTTagInt.class,
+            field -> field.getType() == int.class,
+            "data", "field_74748_a");
+    private static final java.lang.reflect.Field NBT_TAG_LONG_DATA = ReflectionCompat.findField(NBTTagLong.class,
+            field -> field.getType() == long.class,
+            "data", "field_74753_a");
+    private static final java.lang.reflect.Field NBT_TAG_FLOAT_DATA = ReflectionCompat.findField(NBTTagFloat.class,
+            field -> field.getType() == float.class,
+            "data", "field_74750_a");
+    private static final java.lang.reflect.Field NBT_TAG_DOUBLE_DATA = ReflectionCompat.findField(NBTTagDouble.class,
+            field -> field.getType() == double.class,
+            "data", "field_74755_a");
+    private static final java.lang.reflect.Field NBT_TAG_BYTE_ARRAY_DATA = ReflectionCompat.findField(NBTTagByteArray.class,
+            field -> field.getType() == byte[].class,
+            "data", "field_74754_a");
+    private static final java.lang.reflect.Field NBT_TAG_STRING_DATA = ReflectionCompat.findField(NBTTagString.class,
+            field -> field.getType() == String.class,
+            "data", "field_74751_a");
+    private static final java.lang.reflect.Field NBT_TAG_INT_ARRAY_DATA = ReflectionCompat.findField(NBTTagIntArray.class,
+            field -> field.getType() == int[].class,
+            "intArray", "field_74749_a");
 
     @Nonnull
     public static TableCellButton addButton(int id, Consumer<NBTBase> consumer)

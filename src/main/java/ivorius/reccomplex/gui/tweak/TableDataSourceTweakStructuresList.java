@@ -14,6 +14,7 @@ import ivorius.reccomplex.gui.table.TableDelegate;
 import ivorius.reccomplex.gui.table.cell.*;
 import ivorius.reccomplex.gui.table.datasource.TableDataSourceSegmented;
 import ivorius.reccomplex.utils.RCStrings;
+import ivorius.reccomplex.utils.ReflectionCompat;
 import ivorius.reccomplex.utils.scale.Scales;
 import ivorius.reccomplex.world.gen.feature.structure.StructureRegistry;
 import net.minecraft.client.Minecraft;
@@ -25,7 +26,6 @@ import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.util.text.event.ClickEvent;
 import net.minecraft.util.text.event.HoverEvent;
-import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
@@ -73,7 +73,7 @@ public class TableDataSourceTweakStructuresList extends TableDataSourceSegmented
 
     public static void suggest(GuiChat chat, String command)
     {
-        GuiTextField inputField = ReflectionHelper.getPrivateValue(GuiChat.class, chat, "inputField", "field_146415_a");
+        GuiTextField inputField = ReflectionCompat.get(GUI_CHAT_INPUT_FIELD, chat);
         inputField.setText(command);
     }
 
@@ -127,4 +127,7 @@ public class TableDataSourceTweakStructuresList extends TableDataSourceSegmented
     {
         return 1;
     }
+    private static final java.lang.reflect.Field GUI_CHAT_INPUT_FIELD = ReflectionCompat.findField(GuiChat.class,
+            field -> GuiTextField.class.isAssignableFrom(field.getType()),
+            "inputField", "field_146415_a");
 }

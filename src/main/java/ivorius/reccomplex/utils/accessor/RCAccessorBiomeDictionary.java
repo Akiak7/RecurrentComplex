@@ -7,6 +7,7 @@ package ivorius.reccomplex.utils.accessor;
 
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import ivorius.reccomplex.utils.ReflectionCompat;
 import net.minecraftforge.common.BiomeDictionary;
 
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ public class RCAccessorBiomeDictionary
 
     public static Map<String, BiomeDictionary.Type> getMap()
     {
-        return SafeReflector.get(BiomeDictionary.Type.class, null, "byName");
+        return ReflectionCompat.get(TYPE_BY_NAME, null);
     }
 
     public static void addSubtypes(BiomeDictionary.Type type, BiomeDictionary.Type... subtypes)
@@ -41,11 +42,20 @@ public class RCAccessorBiomeDictionary
 
     public static List<BiomeDictionary.Type> getSubtypes(BiomeDictionary.Type type)
     {
-        return SafeReflector.get(BiomeDictionary.Type.class, type, new ArrayList<>(), "subTypes");
+        List<BiomeDictionary.Type> subtypes = ReflectionCompat.get(TYPE_SUBTYPES, type);
+        return subtypes != null ? subtypes : new ArrayList<>();
     }
 
     public static void setSubtypes(BiomeDictionary.Type type, List<BiomeDictionary.Type> types)
     {
-        SafeReflector.of(BiomeDictionary.Type.class, field -> field.set(type, types), "subTypes");
+        ReflectionCompat.set(TYPE_SUBTYPES, type, types);
     }
+
+    private static final java.lang.reflect.Field TYPE_BY_NAME = ReflectionCompat.findField(BiomeDictionary.Type.class,
+            field -> Map.class.isAssignableFrom(field.getType()),
+            "byName");
+
+    private static final java.lang.reflect.Field TYPE_SUBTYPES = ReflectionCompat.findField(BiomeDictionary.Type.class,
+            field -> List.class.isAssignableFrom(field.getType()),
+            "subTypes");
 }
