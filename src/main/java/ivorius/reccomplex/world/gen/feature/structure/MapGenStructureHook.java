@@ -6,6 +6,8 @@
 package ivorius.reccomplex.world.gen.feature.structure;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.LongConsumer;
+import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import ivorius.reccomplex.RecurrentComplex;
@@ -69,6 +71,19 @@ public class MapGenStructureHook extends MapGenStructure
         INITIALIZE_STRUCTURE_DATA_METHOD = initializeStructureDataMethod;
         SET_STRUCTURE_START_METHOD = setStructureStartMethod;
         CAN_SPAWN_STRUCTURE_AT_COORDS_METHOD = canSpawnStructureAtCoordsMethod;
+    }
+
+    static void forEachNewStructureKey(Long2ObjectMap<?> map, LongSet before, LongConsumer consumer)
+    {
+        LongIterator iterator = map.keySet().iterator();
+        while (iterator.hasNext())
+        {
+            long key = iterator.nextLong();
+            if (!before.contains(key))
+            {
+                consumer.accept(key);
+            }
+        }
     }
 
     public MapGenStructure base;
