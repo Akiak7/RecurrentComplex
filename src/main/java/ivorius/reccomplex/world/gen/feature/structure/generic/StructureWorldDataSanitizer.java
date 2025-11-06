@@ -202,13 +202,6 @@ public class StructureWorldDataSanitizer
             return false;
 
         String itemId = item.getString("id");
-
-        if (!isKnownItem(itemId))
-        {
-            result.recordMissingItem(itemId);
-            return true;
-        }
-
         if (!LOOT_TAG_ITEM.equals(itemId))
             return false;
 
@@ -227,22 +220,6 @@ public class StructureWorldDataSanitizer
         if (!known)
             result.recordMissingLootTable(key);
         return !known;
-    }
-
-    private static boolean isKnownItem(@Nullable String itemId)
-    {
-        if (itemId == null || itemId.isEmpty())
-            return false;
-
-        try
-        {
-            ResourceLocation location = new ResourceLocation(itemId);
-            return ForgeRegistries.ITEMS.containsKey(location);
-        }
-        catch (Exception ignored)
-        {
-            return false;
-        }
     }
 
     private static void sanitizeEntities(SanitizationResult result)
@@ -332,7 +309,6 @@ public class StructureWorldDataSanitizer
         writeStringSet(root, "missingTileEntities", result.missingTileEntities);
         writeStringSet(root, "missingEntities", result.missingEntities);
         writeStringSet(root, "missingLootTables", result.missingLootTables);
-        writeStringSet(root, "missingItems", result.missingItems);
 
         if (path.getParent() != null)
             Files.createDirectories(path.getParent());
@@ -368,9 +344,7 @@ public class StructureWorldDataSanitizer
             return true;
         if (hasResolvedEntities(root))
             return true;
-        if (hasResolvedLootTables(root))
-            return true;
-        return hasResolvedItems(root);
+        return hasResolvedLootTables(root);
     }
 
     private static boolean hasResolvedBlocks(NBTTagCompound root)
@@ -454,22 +428,6 @@ public class StructureWorldDataSanitizer
         return false;
     }
 
-    private static boolean hasResolvedItems(NBTTagCompound root)
-    {
-        if (!root.hasKey("missingItems", Constants.NBT.TAG_LIST))
-            return false;
-
-        NBTTagList list = root.getTagList("missingItems", Constants.NBT.TAG_STRING);
-        for (int i = 0; i < list.tagCount(); i++)
-        {
-            String id = list.getStringTagAt(i);
-            if (isKnownItem(id))
-                return true;
-        }
-
-        return false;
-    }
-
     public static class SanitizationResult
     {
         final NBTTagCompound worldData;
@@ -477,7 +435,6 @@ public class StructureWorldDataSanitizer
         final Set<String> missingTileEntities = new HashSet<>();
         final Set<String> missingEntities = new HashSet<>();
         final Set<String> missingLootTables = new HashSet<>();
-        final Set<String> missingItems = new HashSet<>();
 
         SanitizationResult(NBTTagCompound worldData)
         {
@@ -491,7 +448,7 @@ public class StructureWorldDataSanitizer
 
         public boolean hasMissingEntries()
         {
-            return !(missingBlocks.isEmpty() && missingTileEntities.isEmpty() && missingEntities.isEmpty() && missingLootTables.isEmpty() && missingItems.isEmpty());
+            return !(missingBlocks.isEmpty() && missingTileEntities.isEmpty() && missingEntities.isEmpty() && missingLootTables.isEmpty());
         }
 
         void recordMissingBlock(@Nullable String id)
@@ -518,12 +475,6 @@ public class StructureWorldDataSanitizer
                 missingLootTables.add(key);
         }
 
-        void recordMissingItem(@Nullable String id)
-        {
-            if (id != null && !id.isEmpty())
-                missingItems.add(id);
-        }
-
         public Set<String> getMissingBlocks()
         {
             return Collections.unmodifiableSet(missingBlocks);
@@ -542,11 +493,6 @@ public class StructureWorldDataSanitizer
         public Set<String> getMissingLootTables()
         {
             return Collections.unmodifiableSet(missingLootTables);
-        }
-
-        public Set<String> getMissingItems()
-        {
-            return Collections.unmodifiableSet(missingItems);
         }
     }
 }
