@@ -39,6 +39,7 @@ import ivorius.reccomplex.world.gen.feature.structure.generic.transformers.RunTr
 import ivorius.reccomplex.world.gen.feature.structure.generic.transformers.Transformer;
 import ivorius.reccomplex.world.gen.feature.structure.generic.transformers.TransformerGenerationBehavior;
 import ivorius.reccomplex.world.gen.feature.structure.generic.transformers.TransformerMulti;
+import ivorius.reccomplex.world.gen.feature.RCWorldgenMonitor;
 import ivorius.reccomplex.world.storage.loot.LootGenerationHandler;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
@@ -49,6 +50,7 @@ import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3i;
 import net.minecraft.util.text.TextComponentBase;
@@ -64,6 +66,9 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -228,9 +233,26 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
         if (transformer != null)
             transformer.transformer.transform(transformer.instanceData, Transformer.Phase.AFTER, context, worldData, transformer);
 
+        Map<ResourceLocation, Integer> skippedEntities = new HashMap<>();
+        Map<String, Integer> invalidEntityIds = new HashMap<>();
+
         for (NBTTagCompound entityCompound : worldData.entities) {
             double[] transformedEntityPos = context.transform.applyOn(getEntityPos(entityCompound), areaSize);
             if (context.includes(new Vec3i(transformedEntityPos[0] + origin.getX(), transformedEntityPos[1] + origin.getY(), transformedEntityPos[2] + origin.getZ()))) {
+                String entityIdString = entityCompound.getString("id");
+                ResourceLocation entityId = ResourceLocation.tryCreate(entityIdString);
+
+                if (entityId == null) {
+                    invalidEntityIds.merge(entityIdString.isEmpty() ? "<empty>" : entityIdString, 1, Integer::sum);
+                    continue;
+                }
+
+                if (MissingEntityCache.isMissing(entityId)) {
+                    MissingEntityCache.recordSkip(entityId);
+                    skippedEntities.merge(entityId, 1, Integer::sum);
+                    continue;
+                }
+
                 Entity entity = EntityList.createEntityFromNBT(entityCompound, world);
 
                 if (entity != null) {
@@ -242,10 +264,13 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
                     world.spawnEntity(entity);
                 }
                 else {
-                    RecurrentComplex.logger.error("Error loading entity with ID '" + entityCompound.getString("id") + "'");
+                    MissingEntityCache.recordSkip(entityId);
+                    skippedEntities.merge(entityId, 1, Integer::sum);
                 }
             }
         }
+
+        MissingEntityReporter.schedule(context, skippedEntities, invalidEntityIds);
     }
 
     @Nullable
@@ -271,6 +296,71 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
                 instanceData.transformerData,
                 instanceData.foreignTransformerData
         )));
+    }
+
+    private static final class MissingEntityCache
+    {
+        private static final Set<ResourceLocation> MISSING_ENTITY_IDS = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        private static final ConcurrentMap<ResourceLocation, LongAdder> MISSING_ENTITY_COUNTS = new ConcurrentHashMap<>();
+
+        private MissingEntityCache()
+        {
+        }
+
+        public static boolean isMissing(ResourceLocation id)
+        {
+            return MISSING_ENTITY_IDS.contains(id);
+        }
+
+        public static void recordSkip(ResourceLocation id)
+        {
+            MISSING_ENTITY_IDS.add(id);
+            MISSING_ENTITY_COUNTS.computeIfAbsent(id, key -> new LongAdder()).increment();
+        }
+
+        public static long total(ResourceLocation id)
+        {
+            LongAdder adder = MISSING_ENTITY_COUNTS.get(id);
+            return adder != null ? adder.sum() : 0L;
+        }
+    }
+
+    private static final class MissingEntityReporter
+    {
+        private MissingEntityReporter()
+        {
+        }
+
+        public static void schedule(StructureSpawnContext context, Map<ResourceLocation, Integer> skippedEntities, Map<String, Integer> invalidEntityIds)
+        {
+            if (skippedEntities.isEmpty() && invalidEntityIds.isEmpty())
+                return;
+
+            WorldServer world = context.environment.world;
+            StructureBoundingBox boundingBox = context.boundingBox;
+            Map<ResourceLocation, Integer> skippedSnapshot = new LinkedHashMap<>(skippedEntities);
+            Map<String, Integer> invalidSnapshot = new LinkedHashMap<>(invalidEntityIds);
+            String location = boundingBox.toString();
+            int dimension = world.provider.getDimension();
+
+            RCWorldgenMonitor.report(() -> {
+                if (!skippedSnapshot.isEmpty()) {
+                    long totalSkipped = skippedSnapshot.values().stream().mapToLong(Integer::longValue).sum();
+                    String details = skippedSnapshot.entrySet().stream()
+                            .map(entry -> entry.getKey() + "=" + entry.getValue() + " (total=" + MissingEntityCache.total(entry.getKey()) + ")")
+                            .collect(Collectors.joining(", "));
+                    RecurrentComplex.logger.warn("Skipped {} entity instantiation(s) for missing IDs while generating structure at {} in dimension {}: {}", totalSkipped, location, dimension, details);
+                }
+
+                if (!invalidSnapshot.isEmpty()) {
+                    long totalInvalid = invalidSnapshot.values().stream().mapToLong(Integer::longValue).sum();
+                    String details = invalidSnapshot.entrySet().stream()
+                            .map(entry -> entry.getKey() + "=" + entry.getValue())
+                            .collect(Collectors.joining(", "));
+                    RecurrentComplex.logger.warn("Encountered {} invalid entity ID(s) while generating structure at {} in dimension {}: {}", totalInvalid, location, dimension, details);
+                }
+            });
+        }
     }
 
     @Nullable

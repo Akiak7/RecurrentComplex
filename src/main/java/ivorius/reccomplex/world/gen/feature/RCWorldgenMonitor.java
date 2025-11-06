@@ -9,10 +9,17 @@ import ivorius.reccomplex.RecurrentComplex;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class RCWorldgenMonitor
 {
     protected final static Deque<String> actions = new ArrayDeque<>();
+    private static final ExecutorService REPORT_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "RCWorldgenMonitor-Reporter");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     public static void start(String action)
     {
@@ -22,6 +29,11 @@ public class RCWorldgenMonitor
     public static void stop()
     {
         actions.pop();
+    }
+
+    public static void report(Runnable runnable)
+    {
+        REPORT_EXECUTOR.execute(runnable);
     }
 
     public static void create()
