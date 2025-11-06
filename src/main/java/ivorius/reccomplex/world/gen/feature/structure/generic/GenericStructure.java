@@ -241,7 +241,12 @@ public class GenericStructure implements Structure<GenericStructure.InstanceData
             double[] transformedEntityPos = context.transform.applyOn(getEntityPos(entityCompound), areaSize);
             if (context.includes(new Vec3i(transformedEntityPos[0] + origin.getX(), transformedEntityPos[1] + origin.getY(), transformedEntityPos[2] + origin.getZ()))) {
                 String entityIdString = entityCompound.getString("id");
-                ResourceLocation entityId = ResourceLocation.tryCreate(entityIdString);
+                ResourceLocation entityId;
+                try {
+                    entityId = new ResourceLocation(entityIdString);
+                } catch (ResourceLocation.ResourceLocationException | IllegalArgumentException e) {
+                    entityId = null;
+                }
 
                 if (entityId == null) {
                     invalidEntityIds.merge(entityIdString.isEmpty() ? "<empty>" : entityIdString, 1, Integer::sum);
