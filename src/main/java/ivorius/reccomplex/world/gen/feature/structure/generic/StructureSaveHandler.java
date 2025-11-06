@@ -23,10 +23,14 @@ import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 
+import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -81,9 +85,11 @@ public class StructureSaveHandler
 
     public GenericStructure fromResource(ResourceLocation resourceLocation)
     {
+        SanitizedCacheInfo cacheInfo = sanitizedCacheInfo(resourceLocation);
+
         try (ZipInputStream zipInputStream = new ZipInputStream(IvFileHelper.inputStreamFromResourceLocation(resourceLocation)))
         {
-            return fromZip(zipInputStream);
+            return fromZip(zipInputStream, cacheInfo);
         }
         catch (Exception ex)
         {
@@ -95,16 +101,72 @@ public class StructureSaveHandler
 
     public GenericStructure fromZip(ZipInputStream zipInputStream) throws IOException
     {
+        return fromZip(zipInputStream, null);
+    }
+
+    private GenericStructure fromZip(ZipInputStream zipInputStream, @Nullable SanitizedCacheInfo cacheInfo) throws IOException
+    {
         ZipFinder finder = new ZipFinder();
 
         ZipFinder.Result<String> json = finder.bytes(STRUCTURE_INFO_JSON_FILENAME, String::new);
-        ZipFinder.Result<NBTTagCompound> worldData = finder.bytes(WORLD_DATA_NBT_FILENAME,
-                bytes -> CompressedStreamTools.readCompressed(new ByteArrayInputStream(bytes)));
+        ZipFinder.Result<byte[]> worldDataBytes = finder.bytes(WORLD_DATA_NBT_FILENAME, bytes -> bytes);
 
         try
         {
             finder.read(zipInputStream);
-            return fromJSON(json.get(), worldData.get());
+            String jsonData = json.get();
+            byte[] rawWorldData = worldDataBytes.get();
+            NBTTagCompound worldData = CompressedStreamTools.readCompressed(new ByteArrayInputStream(rawWorldData));
+
+            GenericStructure structure = fromJSON(jsonData, worldData);
+            NBTTagCompound sanitized = worldData;
+
+            if (cacheInfo != null)
+            {
+                Path cachePath = sanitizedCachePath(cacheInfo);
+                String hash = StructureWorldDataSanitizer.computeHash(rawWorldData);
+                NBTTagCompound cached = null;
+
+                try
+                {
+                    cached = StructureWorldDataSanitizer.readCache(cachePath, hash);
+                }
+                catch (IOException e)
+                {
+                    RecurrentComplex.logger.warn("Failed to read sanitized structure cache {}", cachePath, e);
+                }
+
+                if (cached != null)
+                {
+                    sanitized = cached;
+                }
+                else
+                {
+                    StructureWorldDataSanitizer.SanitizationResult result = StructureWorldDataSanitizer.sanitize(worldData);
+                    if (result != null)
+                    {
+                        sanitized = result.getWorldData();
+                        try
+                        {
+                            StructureWorldDataSanitizer.writeCache(cachePath, hash, result);
+                        }
+                        catch (IOException e)
+                        {
+                            RecurrentComplex.logger.warn("Failed to write sanitized structure cache {}", cachePath, e);
+                        }
+                    }
+                }
+
+                structure.applySanitizedWorldData(sanitized, cachePath, hash);
+            }
+            else
+            {
+                StructureWorldDataSanitizer.SanitizationResult result = StructureWorldDataSanitizer.sanitize(worldData);
+                NBTTagCompound sanitizedWorldData = result != null ? result.getWorldData() : sanitized;
+                structure.applySanitizedWorldData(sanitizedWorldData, null, null);
+            }
+
+            return structure;
         }
         catch (IOException | ZipFinder.MissingEntryException e)
         {
@@ -123,6 +185,147 @@ public class StructureSaveHandler
         zipOutputStream.close();
     }
 
+    private SanitizedCacheInfo sanitizedCacheInfo(ResourceLocation location)
+    {
+        String pack = derivePackFromResource(location);
+        String name = stripExtension(location.getResourcePath());
+        return new SanitizedCacheInfo(pack, name);
+    }
+
+    private SanitizedCacheInfo sanitizedCacheInfo(Path path, String name)
+    {
+        return new SanitizedCacheInfo(derivePackFromPath(path), name);
+    }
+
+    private Path sanitizedCachePath(SanitizedCacheInfo info)
+    {
+        Path root = new File(RecurrentComplex.proxy.getDataDirectory(), "config/rc_cache/sanitized").toPath();
+        Path path = root;
+
+        if (info.pack != null && !info.pack.isEmpty())
+        {
+            for (String segment : info.pack.split("/"))
+            {
+                String sanitized = sanitizeSegment(segment);
+                if (!sanitized.isEmpty())
+                    path = path.resolve(sanitized);
+            }
+        }
+
+        String sanitizedName = sanitizeSegment(info.name);
+        if (sanitizedName.isEmpty())
+            sanitizedName = "_";
+
+        return path.resolve(sanitizedName + ".nbt");
+    }
+
+    private String derivePackFromResource(ResourceLocation location)
+    {
+        String[] rawParts = location.getResourcePath().split("/");
+        List<String> parts = new ArrayList<>();
+        for (String part : rawParts)
+        {
+            if (!part.isEmpty())
+                parts.add(part);
+        }
+
+        int structuresIndex = -1;
+        for (int i = parts.size() - 1; i >= 0; i--)
+        {
+            if ("structures".equals(parts.get(i)))
+            {
+                structuresIndex = i;
+                break;
+            }
+        }
+
+        String relative = "";
+        if (structuresIndex >= 0 && structuresIndex + 1 < parts.size() - 1)
+            relative = joinPath(parts.subList(structuresIndex + 1, parts.size() - 1));
+        if (relative.isEmpty() && parts.size() > 1)
+            relative = joinPath(parts.subList(0, parts.size() - 1));
+
+        String domain = location.getResourceDomain();
+        return relative.isEmpty() ? domain : domain + "/" + relative;
+    }
+
+    private String derivePackFromPath(Path path)
+    {
+        Path parent = path.getParent();
+        if (parent == null)
+            return "";
+
+        List<String> parts = new ArrayList<>();
+        for (Path element : parent.normalize())
+            parts.add(element.toString());
+
+        int assetsIndex = parts.indexOf("assets");
+        String domain = (assetsIndex >= 0 && assetsIndex + 1 < parts.size()) ? parts.get(assetsIndex + 1) : "";
+
+        int structuresIndex = -1;
+        for (int i = parts.size() - 1; i >= 0; i--)
+        {
+            if ("structures".equals(parts.get(i)))
+            {
+                structuresIndex = i;
+                break;
+            }
+        }
+
+        String relative = "";
+        if (structuresIndex >= 0 && structuresIndex + 1 < parts.size())
+            relative = joinPath(parts.subList(structuresIndex + 1, parts.size()));
+        if (relative.isEmpty() && !parts.isEmpty())
+            relative = parts.get(parts.size() - 1);
+
+        if (!domain.isEmpty())
+            return relative.isEmpty() ? domain : domain + "/" + relative;
+
+        return relative;
+    }
+
+    private String stripExtension(String filename)
+    {
+        int slash = filename.lastIndexOf('/');
+        String name = slash >= 0 ? filename.substring(slash + 1) : filename;
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 ? name.substring(0, dot) : name;
+    }
+
+    private String sanitizeSegment(String raw)
+    {
+        if (raw == null)
+            return "";
+
+        StringBuilder builder = new StringBuilder(raw.length());
+        for (char c : raw.toCharArray())
+        {
+            if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
+                builder.append('_');
+            else
+                builder.append(c);
+        }
+
+        return builder.toString().trim();
+    }
+
+    private String joinPath(List<String> segments)
+    {
+        return String.join("/", segments);
+    }
+
+    private static class SanitizedCacheInfo
+    {
+        final String pack;
+        final String name;
+
+        SanitizedCacheInfo(String pack, String name)
+        {
+            this.pack = pack == null ? "" : pack;
+            this.name = name == null ? "" : name;
+        }
+    }
+
     public class Loader extends FileLoaderRegistry<GenericStructure>
     {
         public Loader()
@@ -133,9 +336,10 @@ public class StructureSaveHandler
         @Override
         public GenericStructure read(Path path, String name) throws Exception
         {
+            SanitizedCacheInfo cacheInfo = sanitizedCacheInfo(path, name);
             try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(path)))
             {
-                return fromZip(zip);
+                return fromZip(zip, cacheInfo);
             }
         }
     }
