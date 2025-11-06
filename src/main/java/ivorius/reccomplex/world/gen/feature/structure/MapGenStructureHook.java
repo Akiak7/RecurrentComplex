@@ -9,6 +9,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.world.gen.feature.decoration.RCBiomeDecorator;
 import ivorius.reccomplex.world.gen.feature.structure.generic.generation.VanillaDecorationGeneration;
 import net.minecraft.util.math.BlockPos;
@@ -29,6 +30,48 @@ import java.util.function.LongConsumer;
 
 public class MapGenStructureHook extends MapGenStructure
 {
+    private static final Method INITIALIZE_STRUCTURE_DATA_METHOD;
+    private static final Method SET_STRUCTURE_START_METHOD;
+    private static final Method CAN_SPAWN_STRUCTURE_AT_COORDS_METHOD;
+
+    static
+    {
+        Method initializeStructureDataMethod = null;
+        Method setStructureStartMethod = null;
+        Method canSpawnStructureAtCoordsMethod = null;
+
+        try
+        {
+            initializeStructureDataMethod = ReflectionHelper.findMethod(MapGenStructure.class, "initializeStructureData", "func_143027_a", World.class);
+        }
+        catch (ReflectionHelper.UnableToFindMethodException e)
+        {
+            logReflectionError("initializeStructureData", e);
+        }
+
+        try
+        {
+            setStructureStartMethod = ReflectionHelper.findMethod(MapGenStructure.class, "setStructureStart", "func_143026_a", Integer.TYPE, Integer.TYPE, StructureStart.class);
+        }
+        catch (ReflectionHelper.UnableToFindMethodException e)
+        {
+            logReflectionError("setStructureStart", e);
+        }
+
+        try
+        {
+            canSpawnStructureAtCoordsMethod = ReflectionHelper.findMethod(MapGenStructure.class, "canSpawnStructureAtCoords", "func_75047_a", Integer.TYPE, Integer.TYPE);
+        }
+        catch (ReflectionHelper.UnableToFindMethodException e)
+        {
+            logReflectionError("canSpawnStructureAtCoords", e);
+        }
+
+        INITIALIZE_STRUCTURE_DATA_METHOD = initializeStructureDataMethod;
+        SET_STRUCTURE_START_METHOD = setStructureStartMethod;
+        CAN_SPAWN_STRUCTURE_AT_COORDS_METHOD = canSpawnStructureAtCoordsMethod;
+    }
+
     public MapGenStructure base;
     public RCBiomeDecorator.DecorationType decorationType;
 
@@ -50,29 +93,31 @@ public class MapGenStructureHook extends MapGenStructure
 
     public static void initializeStructureData(MapGenStructure gen, World world)
     {
-        Method method = ReflectionHelper.findMethod(MapGenStructure.class, "initializeStructureData", "func_143027_a", World.class);
+        if (INITIALIZE_STRUCTURE_DATA_METHOD == null)
+            return;
 
         try
         {
-            method.invoke(gen, world);
+            INITIALIZE_STRUCTURE_DATA_METHOD.invoke(gen, world);
         }
         catch (IllegalAccessException | InvocationTargetException e)
         {
-            e.printStackTrace();
+            logReflectionError("initializeStructureData", e);
         }
     }
 
     public static void setStructureStart(MapGenStructure gen, int x, int z, StructureStart start)
     {
-        Method method = ReflectionHelper.findMethod(MapGenStructure.class, "setStructureStart", "func_143026_a", Integer.TYPE, Integer.TYPE, StructureStart.class);
+        if (SET_STRUCTURE_START_METHOD == null)
+            return;
 
         try
         {
-            method.invoke(gen, x, z, start);
+            SET_STRUCTURE_START_METHOD.invoke(gen, x, z, start);
         }
         catch (IllegalAccessException | InvocationTargetException e)
         {
-            e.printStackTrace();
+            logReflectionError("setStructureStart", e);
         }
     }
 
@@ -116,14 +161,16 @@ public class MapGenStructureHook extends MapGenStructure
     @Override
     public boolean canSpawnStructureAtCoords(int chunkX, int chunkZ)
     {
-        Method method = ReflectionHelper.findMethod(MapGenStructure.class, "canSpawnStructureAtCoords", "func_75047_a", Integer.TYPE, Integer.TYPE);
+        if (CAN_SPAWN_STRUCTURE_AT_COORDS_METHOD == null)
+            return false;
+
         try
         {
-            return (boolean) method.invoke(base, chunkX, chunkZ);
+            return (boolean) CAN_SPAWN_STRUCTURE_AT_COORDS_METHOD.invoke(base, chunkX, chunkZ);
         }
         catch (IllegalAccessException | InvocationTargetException e)
         {
-            e.printStackTrace();
+            logReflectionError("canSpawnStructureAtCoords", e);
         }
         return false;
     }
@@ -192,5 +239,13 @@ public class MapGenStructureHook extends MapGenStructure
     public RCBiomeDecorator.DecorationType getDecorationType(StructureStart start)
     {
         return decorationType;
+    }
+
+    private static void logReflectionError(String methodName, Exception e)
+    {
+        if (RecurrentComplex.logger != null)
+            RecurrentComplex.logger.error("Failed to access MapGenStructure method '" + methodName + "'", e);
+        else
+            e.printStackTrace();
     }
 }
