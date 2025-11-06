@@ -6,7 +6,6 @@
 package ivorius.reccomplex.world.gen.feature.structure;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.LongConsumer;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -27,6 +26,7 @@ import javax.annotation.Nullable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Random;
+import java.util.function.LongConsumer;
 public class MapGenStructureHook extends MapGenStructure
 {
     private static final Method INITIALIZE_STRUCTURE_DATA_METHOD;
