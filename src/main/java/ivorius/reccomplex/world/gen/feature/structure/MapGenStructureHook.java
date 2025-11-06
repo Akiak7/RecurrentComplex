@@ -6,7 +6,6 @@
 package ivorius.reccomplex.world.gen.feature.structure;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import ivorius.reccomplex.RecurrentComplex;
@@ -26,13 +25,13 @@ import javax.annotation.Nullable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Random;
-import java.util.function.LongConsumer;
-
 public class MapGenStructureHook extends MapGenStructure
 {
     private static final Method INITIALIZE_STRUCTURE_DATA_METHOD;
     private static final Method SET_STRUCTURE_START_METHOD;
     private static final Method CAN_SPAWN_STRUCTURE_AT_COORDS_METHOD;
+
+    private final LongSet processedStructureKeys = new LongOpenHashSet();
 
     static
     {
@@ -193,12 +192,23 @@ public class MapGenStructureHook extends MapGenStructure
 
         initializeStructureData(base, world);
         Long2ObjectMap<StructureStart> map = getStructureMap(base);
-        LongSet before = new LongOpenHashSet(map.keySet());
 
         base.generate(worldIn, x, z, primer);
 
-        forEachNewStructureKey(map, before, key -> {
-            StructureStart start = map.get(key);
+        if (processedStructureKeys.size() == map.size())
+        {
+            return;
+        }
+
+        for (Long2ObjectMap.Entry<StructureStart> entry : map.long2ObjectEntrySet())
+        {
+            long key = entry.getLongKey();
+            if (!processedStructureKeys.add(key))
+            {
+                continue;
+            }
+
+            StructureStart start = entry.getValue();
 
             if (start.isSizeableStructure())
             {
@@ -219,19 +229,6 @@ public class MapGenStructureHook extends MapGenStructure
                     // HACKY This is important because technically we're in the planning phase and not allowed to gen
                     RCBiomeDecorator.generate(selected, server, new ChunkPos(start.getChunkPosX(), start.getChunkPosZ()), rand);
                 }
-            }
-        });
-    }
-
-    static void forEachNewStructureKey(Long2ObjectMap<?> map, LongSet before, LongConsumer consumer)
-    {
-        LongIterator iterator = map.keySet().iterator();
-        while (iterator.hasNext())
-        {
-            long key = iterator.nextLong();
-            if (!before.contains(key))
-            {
-                consumer.accept(key);
             }
         }
     }
