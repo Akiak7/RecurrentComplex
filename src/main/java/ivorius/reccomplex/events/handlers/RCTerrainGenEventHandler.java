@@ -23,6 +23,7 @@ import net.minecraftforge.fml.common.eventhandler.Event;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
 import javax.annotation.Nullable;
+import java.lang.reflect.Method;
 import java.util.Random;
 
 /**
@@ -30,41 +31,93 @@ import java.util.Random;
  */
 public class RCTerrainGenEventHandler
 {
+    private static volatile boolean amountMethodsInitialized;
+    private static Method hasAmountDataMethod;
+    private static Method getModifiedAmountMethod;
+    private static Method setModifiedAmountMethod;
+
+    private static void ensureAmountMethods(Class<?> eventClass)
+    {
+        if (amountMethodsInitialized)
+        {
+            return;
+        }
+
+        synchronized (RCTerrainGenEventHandler.class)
+        {
+            if (amountMethodsInitialized)
+            {
+                return;
+            }
+
+            try
+            {
+                getModifiedAmountMethod = eventClass.getDeclaredMethod("getModifiedAmount");
+                setModifiedAmountMethod = eventClass.getDeclaredMethod("setModifiedAmount", int.class);
+                hasAmountDataMethod = eventClass.getDeclaredMethod("hasAmountData");
+            }
+            catch (Exception ignored)
+            {
+                hasAmountDataMethod = null;
+                getModifiedAmountMethod = null;
+                setModifiedAmountMethod = null;
+            }
+            finally
+            {
+                amountMethodsInitialized = true;
+            }
+        }
+    }
+
     private static boolean hasAmountData(DecorateBiomeEvent.Decorate event)
     {
-        try
+        ensureAmountMethods(event.getClass());
+
+        if (hasAmountDataMethod != null)
         {
-            // Ensure
-            event.getClass().getDeclaredMethod("getModifiedAmount");
-            event.getClass().getDeclaredMethod("setModifiedAmount", int.class);
-            return (boolean) event.getClass().getDeclaredMethod("hasAmountData").invoke(event);
+            try
+            {
+                return (boolean) hasAmountDataMethod.invoke(event);
+            }
+            catch (Exception ignored)
+            {
+            }
         }
-        catch (Exception e)
-        {
-            return false;
-        }
+
+        return false;
     }
 
     private static int getModifiedAmount(DecorateBiomeEvent.Decorate event)
     {
-        try
+        ensureAmountMethods(event.getClass());
+
+        if (getModifiedAmountMethod != null)
         {
-            return (int) event.getClass().getDeclaredMethod("getModifiedAmount").invoke(event);
+            try
+            {
+                return (int) getModifiedAmountMethod.invoke(event);
+            }
+            catch (Exception ignored)
+            {
+            }
         }
-        catch (Exception ignored)
-        {
-            return -1;
-        }
+
+        return -1;
     }
 
     private static void setModifiedAmount(DecorateBiomeEvent.Decorate event, int amount)
     {
-        try
+        ensureAmountMethods(event.getClass());
+
+        if (setModifiedAmountMethod != null)
         {
-            event.getClass().getDeclaredMethod("setModifiedAmount", int.class).invoke(event, amount);
-        }
-        catch (Exception ignored)
-        {
+            try
+            {
+                setModifiedAmountMethod.invoke(event, amount);
+            }
+            catch (Exception ignored)
+            {
+            }
         }
     }
 
