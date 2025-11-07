@@ -93,16 +93,14 @@ public class SelectivePlacer implements Placer
         // In this case, just fuck it and use the minimum / maximum part of the structure. Won't get much better.
         int safeBaseline = MathHelper.clamp(baseline, 0, blockCollection.height - 1);
 
+        // First gather the full footprint of candidate surface positions within the structure itself.
         Set<BlockPos> surface = BlockAreas.side(blockCollection.area(), EnumFacing.DOWN).stream()
                 .map(p -> BlockSurfacePos.from(p).blockPos(safeBaseline))
                 .filter(p -> sourceMatcher.evaluate(blockCollection.getBlockState(p)))
-                .filter(p -> !RCConfig.avoidPlacerChunkGeneration || context.environment.world.isChunkGeneratedAt(p.getX() >> 4, p.getZ() >> 4))
                 .collect(Collectors.toSet());
 
-        // If possible, use just the surface within loaded chunks.
-        // If not, just use the normal surface. It may cause chained chunk gen even if avoidPlacerChunkGeneration is set,
-        // but it's better than to try placing the structure on a part that isn't deemed to be a proper 'surface' in the
-        // first place.
+        // Then prefer the subset that already has neighbouring chunks generated. This reduces cascading chunk
+        // generation but we keep the original footprint as a fallback.
         Set<BlockPos> safeSurface = surface.stream()
             .filter(p -> !RCConfig.avoidPlacerChunkGeneration || context.environment.world.isChunkGeneratedAt(p.getX() >> 4, p.getZ() >> 4))
             .collect(Collectors.toSet());
