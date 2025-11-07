@@ -630,7 +630,7 @@ reccomplex.placer.factors.limit.rays.matcher.ratio=Required Ratio
 reccomplex.placer.factors.limit.rays.matcher.ratio.tooltip=The ratio of matched blocks<br>required until the ray stops.
 
 reccomplex.placer.factors.limit.rays.average=Surface Finder
-reccomplex.placer.factors.limit.rays.average.tooltip=Find the average surface height<br>fulfilling the criteria.
+reccomplex.placer.factors.limit.rays.average.tooltip=Find the average surface height<br>fulfilling the criteria, skipping offsets if the surface varies too much.
 
 reccomplex.placer.factors.match=Match
 reccomplex.placer.factors.match.tooltip=Ensure specific blocks from the<br>structure to have fitting<br>terrain to spawn in.

@@ -45,6 +45,8 @@ import static ivorius.reccomplex.world.gen.feature.structure.generic.placement.F
  */
 public class RayAverageMatcher extends FactorLimit.Ray
 {
+    private static final int MAX_HEIGHT_SPREAD = 4;
+
     public final PositionedBlockExpression destMatcher = new PositionedBlockExpression(RecurrentComplex.specialRegistry);
     public boolean up;
 
@@ -72,7 +74,7 @@ public class RayAverageMatcher extends FactorLimit.Ray
     }
 
     // From StructureVillagePieces
-    public static int getAverageGroundLevel(boolean up, int y, Set<BlockPos> surface, Predicate<BlockPos> predicate, int wHeight, double samples, Random random)
+    public static int getAverageGroundLevel(boolean up, int y, Set<BlockPos> surface, Predicate<BlockPos> predicate, int wHeight, double samples, Random random, int maxSpread)
     {
         TIntList list = new TIntArrayList(surface.size());
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -96,8 +98,23 @@ public class RayAverageMatcher extends FactorLimit.Ray
 
         if (list.isEmpty())
             return -1;
-        else
-            return robustAverage(list.toArray());
+
+        int[] sampledOffsets = list.toArray();
+
+        int min = Integer.MAX_VALUE;
+        int max = Integer.MIN_VALUE;
+        for (int value : sampledOffsets)
+        {
+            if (value < min)
+                min = value;
+            if (value > max)
+                max = value;
+        }
+
+        if (max - min > maxSpread)
+            return -1;
+
+        return robustAverage(sampledOffsets);
     }
 
     protected static int robustAverage(int... values)
@@ -152,7 +169,7 @@ public class RayAverageMatcher extends FactorLimit.Ray
 
         int averageGroundLevel = getAverageGroundLevel(up, y, shiftedSurface,
                 blockPos -> destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, blockPos)), cache.world.getHeight(),
-                samples, context.random);
+                samples, context.random, MAX_HEIGHT_SPREAD);
         return averageGroundLevel >= 0 ? OptionalInt.of(averageGroundLevel) : OptionalInt.empty();
     }
 
