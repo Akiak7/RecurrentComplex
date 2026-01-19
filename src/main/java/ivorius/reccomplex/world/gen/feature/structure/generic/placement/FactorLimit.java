@@ -94,7 +94,11 @@ public class FactorLimit extends GenericPlacer.Factor
                     consideration.add(Pair.of(selection, weight(ray.weight)));
             }
             else
-                break;
+            {
+                LineSelection selection = LineSelection.fromRange(IntegerRanges.from(0, height - 1), true);
+                selection.set(considerable, false, false);
+                return consideration;
+            }
         }
 
         return consideration;
