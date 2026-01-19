@@ -182,6 +182,11 @@ public class RCConfig
             universalTransformerPresets.clear();
             Collections.addAll(universalTransformerPresets, config.getStringList("universalTransformerPresets", CATEGORY_BALANCING, new String[0], "Transformer preset names that are gonna be applied to every single generating structure. Use this if you need to enforce specific rules (e.g. \"don't ever spawn wood blocks\" (with a replace transformer)."));
 
+            if (RecurrentComplex.logger != null && RecurrentComplex.logger.isDebugEnabled())
+            {
+                RecurrentComplex.logger.debug("Loaded {} universal transformer presets", universalTransformerPresets.size());
+            }
+
             globalToggles.clear();
             ConfigUtil.parseMap(config.getStringList("globalToggles", CATEGORY_BALANCING, new String[]{"treeLeavesDecay: true"}, "Global toggles that can be used in expressions. You can also add your own. Ex: 'treeLeavesDecay: true'."),
                     null, Function.identity(), "global toggle boolean", Boolean::valueOf, globalToggles::put);
