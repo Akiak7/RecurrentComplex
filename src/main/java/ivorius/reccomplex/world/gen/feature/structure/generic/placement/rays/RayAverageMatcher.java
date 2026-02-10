@@ -118,27 +118,27 @@ public class RayAverageMatcher extends FactorLimit.Ray
 
     protected static int robustAverage(int... values)
     {
-        int average = 0;
+        double average = 0;
         for (int val : values)
             average += val;
         average /= values.length;
 
-        int averageDist = 0;
+        double averageDist = 0;
         for (int val : values)
-            averageDist += dist(val, average);
+            averageDist += Math.abs(val - average);
         averageDist /= values.length;
 
-        int newAverage = 0;
+        double newAverage = 0;
         int ignored = 0;
         for (int val : values)
         {
-            if (dist(val, average) <= averageDist * 2)
+            if (Math.abs(val - average) <= averageDist * 2)
                 newAverage += val;
             else
                 ignored++;
         }
 
-        return newAverage / (values.length - ignored);
+        return (int) Math.round(newAverage / (values.length - ignored));
     }
 
     protected static int dist(int val1, int val2)
