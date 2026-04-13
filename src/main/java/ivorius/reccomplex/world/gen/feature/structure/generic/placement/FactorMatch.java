@@ -14,6 +14,7 @@ import ivorius.ivtoolkit.util.LineSelection;
 import ivorius.ivtoolkit.world.WorldCache;
 import ivorius.ivtoolkit.world.chunk.gen.StructureBoundingBoxes;
 import ivorius.reccomplex.RecurrentComplex;
+import ivorius.reccomplex.RCConfig;
 import ivorius.reccomplex.gui.editstructure.placer.TableDataSourceFactorMatch;
 import ivorius.reccomplex.gui.table.TableDelegate;
 import ivorius.reccomplex.gui.table.TableNavigator;
@@ -60,14 +61,20 @@ public class FactorMatch extends GenericPlacer.Factor
         this.requiredConformity = requiredConformity;
     }
 
-    protected float weight(WorldCache cache, Set<? extends BlockPos> sources, float needed)
+    protected boolean canProbe(StructurePlaceContext context, BlockPos pos)
+    {
+        return !RCConfig.avoidPlacerChunkGeneration
+                || context.environment.world.isChunkGeneratedAt(pos.getX() >> 4, pos.getZ() >> 4);
+    }
+
+    protected float weight(WorldCache cache, StructurePlaceContext context, Set<? extends BlockPos> sources, float needed)
     {
         int failChances = (int) (sources.size() * (1f - needed));
         int matched = 0;
 
         for (BlockPos pos : sources)
         {
-            if (destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, pos)))
+            if (canProbe(context, pos) && destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, pos)))
                 matched++;
             else if (--failChances < 0)
                 break;  // Already lost
@@ -109,7 +116,7 @@ public class FactorMatch extends GenericPlacer.Factor
                 int finalY = y;
                 sources.forEach(p -> p.move(EnumFacing.UP, finalY));
 
-                float conformity = weight(cache, sources, requiredConformity);
+                float conformity = weight(cache, context, sources, requiredConformity);
 
                 sources.forEach(p -> p.move(EnumFacing.DOWN, finalY));
 

@@ -6,6 +6,7 @@
 package ivorius.reccomplex.world.gen.feature.decoration;
 
 import com.google.gson.annotations.SerializedName;
+import ivorius.ivtoolkit.blocks.BlockSurfacePos;
 import ivorius.ivtoolkit.tools.IvGsonHelper;
 import ivorius.reccomplex.RCConfig;
 import ivorius.reccomplex.RecurrentComplex;
@@ -19,6 +20,7 @@ import ivorius.reccomplex.world.gen.feature.structure.context.StructureSpawnCont
 import ivorius.reccomplex.world.gen.feature.structure.generic.generation.VanillaDecorationGeneration;
 import net.minecraft.init.Biomes;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.biome.Biome;
@@ -170,15 +172,32 @@ public class RCBiomeDecorator
     public static boolean generate(Pair<Structure<?>, VanillaDecorationGeneration> generation, WorldServer worldIn, ChunkPos chunkPos, Random random)
     {
         long seed = random.nextLong();
+        BlockPos surfacePos = WorldGenStructures.randomSurfacePos(chunkPos, seed).blockPos(0);
+
+        if (RCConfig.avoidPlacerChunkGeneration && !canDecorateWithoutChunkLoads(worldIn, chunkPos, surfacePos))
+            return false;
 
         return new StructureGenerator<>(generation.getLeft()).generationInfo(generation.getRight()).world(worldIn)
                 .seed(seed).maturity(StructureSpawnContext.GenerateMaturity.SUGGEST)
                 .partially(true, chunkPos)
 //                .memorize(RCConfig.memorizeDecoration) // Always memorize for partial gen
                 .allowOverlaps(true)
-                .randomPosition(WorldGenStructures.randomSurfacePos(chunkPos, seed),
+                .randomPosition(BlockSurfacePos.from(surfacePos),
                         generation.getRight().placer()).fromCenter(true)
                 .generate().succeeded();
+    }
+
+    protected static boolean canDecorateWithoutChunkLoads(WorldServer worldIn, ChunkPos originChunk, BlockPos surfacePos)
+    {
+        int targetChunkX = surfacePos.getX() >> 4;
+        int targetChunkZ = surfacePos.getZ() >> 4;
+
+        // Decoration positions are sampled in an 8..23 range to use neighboring generated chunks.
+        // In strict mode we reject candidates that would require probing outside this safe chunk window.
+        if (MathHelper.abs(targetChunkX - originChunk.x) > 1 || MathHelper.abs(targetChunkZ - originChunk.z) > 1)
+            return false;
+
+        return worldIn.isChunkGeneratedAt(targetChunkX, targetChunkZ);
     }
 
     protected static Placer shift(Placer placer, int y)
