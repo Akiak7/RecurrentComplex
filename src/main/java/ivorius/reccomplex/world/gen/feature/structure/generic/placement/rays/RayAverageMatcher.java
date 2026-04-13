@@ -61,6 +61,12 @@ public class RayAverageMatcher extends FactorLimit.Ray
         this.destMatcher.setExpression(destExpression);
     }
 
+    protected boolean canProbe(StructurePlaceContext context, BlockPos pos)
+    {
+        return !RCConfig.avoidPlacerChunkGeneration
+                || context.environment.world.isChunkGeneratedAt(pos.getX() >> 4, pos.getZ() >> 4);
+    }
+
     public static BlockPos findFirstBlock(BlockPos.MutableBlockPos pos, Predicate<BlockPos> predicate, boolean up, int wHeight)
     {
         for (; pos.getY() >= 0 && pos.getY() < wHeight; IvMutableBlockPos.offset(pos, pos, up ? EnumFacing.UP : EnumFacing.DOWN))
@@ -167,7 +173,8 @@ public class RayAverageMatcher extends FactorLimit.Ray
         Set<BlockPos> shiftedSurface = shifted(context, collection, surface);
 
         int averageGroundLevel = getAverageGroundLevel(up, y, shiftedSurface,
-                blockPos -> destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, blockPos)), cache.world.getHeight(),
+                blockPos -> canProbe(context, blockPos)
+                        && destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, blockPos)), cache.world.getHeight(),
                 samples, context.random, RCConfig.rayAverageMaxHeightSpread);
         return averageGroundLevel >= 0 ? OptionalInt.of(averageGroundLevel) : OptionalInt.empty();
     }

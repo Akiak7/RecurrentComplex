@@ -134,7 +134,7 @@ public class RCConfig
         {
             avoidOverlappingGeneration = config.getBoolean("avoidOverlappingGeneration", CATEGORY_BALANCING, true, "Enabling this will cancel any structure generation if another structure is present at the cooridnate already.");
             honorStructureGenerationOption = config.getBoolean("honorStructureGenerationOption", CATEGORY_BALANCING, true, "If disabled, Recurrent Complex will generate structures in worlds without the structure generation option.");
-            avoidPlacerChunkGeneration = config.getBoolean("avoidPlacerChunkGeneration", CATEGORY_BALANCING, false, "If disabled, placers (such as in natural generation structures) will avoid triggering new chunks to be generated. This will decrease the quality of structure placements, but can improve chained chunk generation issues - at least when paired with other methods to avoid this problem.");
+            avoidPlacerChunkGeneration = config.getBoolean("avoidPlacerChunkGeneration", CATEGORY_BALANCING, false, "If enabled, placers (including decoration placement scoring/rays) will avoid triggering new chunks to be generated. This can decrease placement quality, but helps prevent chained chunk generation issues.");
 
             generateNature = config.getBoolean("generateNature", CATEGORY_BALANCING, true, "Whether the nature (e.g. trees, mushrooms) added by the mod should be actively generating.");
             decorationHacks = config.getBoolean("decorationHacks", CATEGORY_BALANCING, true, "Enable hacks for a few decoration types. Disabling this may fix problems but will deactivate ReC overriding those types of structures.");

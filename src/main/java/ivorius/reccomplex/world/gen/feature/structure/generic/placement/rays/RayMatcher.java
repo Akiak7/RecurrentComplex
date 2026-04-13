@@ -11,6 +11,7 @@ import ivorius.ivtoolkit.tools.IvTranslations;
 import ivorius.ivtoolkit.util.IvStreams;
 import ivorius.ivtoolkit.world.WorldCache;
 import ivorius.reccomplex.RecurrentComplex;
+import ivorius.reccomplex.RCConfig;
 import ivorius.reccomplex.gui.TableDataSourceExpression;
 import ivorius.reccomplex.gui.table.TableDelegate;
 import ivorius.reccomplex.gui.table.TableNavigator;
@@ -56,7 +57,13 @@ public class RayMatcher extends FactorLimit.Ray
         this.destMatcher.setExpression(destExpression);
     }
 
-    protected boolean matches(WorldCache cache, Set<BlockPos> surface, int y, float needed)
+    protected boolean canProbe(StructurePlaceContext context, BlockPos pos)
+    {
+        return !RCConfig.avoidPlacerChunkGeneration
+                || context.environment.world.isChunkGeneratedAt(pos.getX() >> 4, pos.getZ() >> 4);
+    }
+
+    protected boolean matches(WorldCache cache, StructurePlaceContext context, Set<BlockPos> surface, int y, float needed)
     {
         int[] chances = new int[]{surface.size()};
 
@@ -67,7 +74,7 @@ public class RayMatcher extends FactorLimit.Ray
         IvStreams.visit(surface.stream(), surfacePos ->
         {
             pos.setPos(surfacePos.getX(), surfacePos.getY() + y, surfacePos.getZ());
-            if (destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, pos)))
+            if (canProbe(context, pos) && destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, pos)))
                 return --need[0] > 0;
             else
                 return --chances[0] > 0; // Already lost
@@ -86,7 +93,7 @@ public class RayMatcher extends FactorLimit.Ray
             if (y < 0 || y >= height) // Found none
                 return OptionalInt.empty();
 
-            if (matches(cache, shiftedSurface, y, requiredRatio))
+            if (matches(cache, context, shiftedSurface, y, requiredRatio))
                 break;
 
             y += up ? 1 : -1;
