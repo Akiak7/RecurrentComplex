@@ -6,6 +6,7 @@
 package ivorius.reccomplex.events.handlers;
 
 import ivorius.reccomplex.RCConfig;
+import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.world.gen.feature.decoration.RCBiomeDecorator;
 import ivorius.reccomplex.world.gen.feature.sapling.RCSaplingGenerator;
 import ivorius.reccomplex.world.gen.feature.structure.MapGenStructureHook;
@@ -25,12 +26,17 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import javax.annotation.Nullable;
 import java.lang.reflect.Method;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Created by lukas on 14.09.16.
  */
 public class RCTerrainGenEventHandler
 {
+    private static final ThreadLocal<Integer> decorationDepth = ThreadLocal.withInitial(() -> 0);
+    private static final long RECURSIVE_DECORATION_LOG_INTERVAL_MS = 10000L;
+    private static final AtomicLong lastRecursiveDecorationLog = new AtomicLong(0L);
+
     private static volatile boolean amountMethodsInitialized;
     private static Method hasAmountDataMethod;
     private static Method getModifiedAmountMethod;
@@ -141,7 +147,27 @@ public class RCTerrainGenEventHandler
     @SubscribeEvent
     public void onDecoration(DecorateBiomeEvent.Decorate event)
     {
-        if (event.getWorld() instanceof WorldServer)
+        if (!(event.getWorld() instanceof WorldServer))
+        {
+            return;
+        }
+
+        int depth = decorationDepth.get();
+        if (depth > 0)
+        {
+            long now = System.currentTimeMillis();
+            long last = lastRecursiveDecorationLog.get();
+            if (now - last >= RECURSIVE_DECORATION_LOG_INTERVAL_MS && lastRecursiveDecorationLog.compareAndSet(last, now))
+            {
+                ChunkPos chunkPos = new ChunkPos(event.getPos());
+                RecurrentComplex.logger.debug("Skipping recursive biome decoration call at depth {} for world {}, type {}, chunk {}",
+                        depth, event.getWorld().provider.getDimension(), event.getType(), chunkPos);
+            }
+            return;
+        }
+
+        decorationDepth.set(depth + 1);
+        try
         {
             RCBiomeDecorator.DecorationType type = RCBiomeDecorator.DecorationType.getDecorationType(event);
 
@@ -157,6 +183,10 @@ public class RCTerrainGenEventHandler
                         event.setResult(result);
                 }
             }
+        }
+        finally
+        {
+            decorationDepth.set(depth);
         }
     }
 
