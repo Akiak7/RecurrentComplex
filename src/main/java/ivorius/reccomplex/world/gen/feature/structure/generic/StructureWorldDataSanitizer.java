@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 import static net.minecraft.nbt.CompressedStreamTools.readCompressed;
@@ -32,6 +33,14 @@ import static net.minecraft.nbt.CompressedStreamTools.writeCompressed;
 public class StructureWorldDataSanitizer
 {
     private static final String LOOT_TAG_ITEM = new ResourceLocation(RecurrentComplex.MOD_ID, "inventory_generation_tag").toString();
+    private static final Set<String> RC_INTERNAL_BLOCK_IDS = new HashSet<>();
+
+    static
+    {
+        registerRcInternalBlock("generic_space", "negativeSpace");
+        registerRcInternalBlock("generic_solid", "naturalFloor");
+        registerRcInternalBlock("spawn_script", "spawnCommand", "weighted_command_block", "spawn_command");
+    }
 
     private StructureWorldDataSanitizer()
     {
@@ -72,6 +81,7 @@ public class StructureWorldDataSanitizer
                 {
                     result.recordMissingBlock(blockId);
                     mapping.set(i, new NBTTagString(airName));
+                    debugBlockSanitized("list[" + i + "]", blockId, airName);
                 }
             }
         }
@@ -89,6 +99,7 @@ public class StructureWorldDataSanitizer
                     {
                         result.recordMissingBlock(blockId);
                         mapping.setString(key, airName);
+                        debugBlockSanitized("mapping." + key, blockId, airName);
                     }
                 }
                 else if (type == Constants.NBT.TAG_COMPOUND)
@@ -104,6 +115,7 @@ public class StructureWorldDataSanitizer
                         if (entry.hasKey("id", Constants.NBT.TAG_STRING))
                             entry.setString("id", airName);
                         entry.removeTag("properties");
+                        debugBlockSanitized("mapping." + key, blockId, airName);
                     }
                 }
             }
@@ -115,6 +127,9 @@ public class StructureWorldDataSanitizer
         if (blockId == null || blockId.isEmpty())
             return false;
 
+        if (isRcInternalBlockId(blockId))
+            return true;
+
         try
         {
             ResourceLocation location = new ResourceLocation(blockId);
@@ -124,6 +139,29 @@ public class StructureWorldDataSanitizer
         {
             return false;
         }
+    }
+
+    private static void registerRcInternalBlock(String canonical, String... aliases)
+    {
+        RC_INTERNAL_BLOCK_IDS.add(canonical.toLowerCase(Locale.ROOT));
+        RC_INTERNAL_BLOCK_IDS.add((RecurrentComplex.MOD_ID + ":" + canonical).toLowerCase(Locale.ROOT));
+
+        for (String alias : aliases)
+        {
+            RC_INTERNAL_BLOCK_IDS.add(alias.toLowerCase(Locale.ROOT));
+            RC_INTERNAL_BLOCK_IDS.add((RecurrentComplex.MOD_ID + ":" + alias).toLowerCase(Locale.ROOT));
+        }
+    }
+
+    private static boolean isRcInternalBlockId(String blockId)
+    {
+        return RC_INTERNAL_BLOCK_IDS.contains(blockId.toLowerCase(Locale.ROOT));
+    }
+
+    private static void debugBlockSanitized(String source, @Nullable String previousBlockId, String replacement)
+    {
+        if (RecurrentComplex.logger != null)
+            RecurrentComplex.logger.debug("Sanitized structure block mapping {} from '{}' to '{}'", source, previousBlockId, replacement);
     }
 
     private static void sanitizeTileEntities(SanitizationResult result)
