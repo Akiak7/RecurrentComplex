@@ -1,14 +1,22 @@
 package ivorius.reccomplex.world.gen.feature.structure.generic;
 
+import net.minecraft.init.Bootstrap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraftforge.common.util.Constants;
 import org.junit.Assert;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 public class StructureWorldDataSanitizerTest
 {
+    @BeforeClass
+    public static void bootstrapMinecraft()
+    {
+        Bootstrap.register();
+    }
+
     @Test
     public void preservesRcInternalPlaceholderBlocksInCompoundMapping()
     {
