@@ -3,7 +3,6 @@ package ivorius.reccomplex.world.gen.feature.structure.generic;
 import com.google.common.hash.Hashing;
 import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.world.storage.loot.WeightedItemCollectionRegistry;
-import net.minecraft.init.Blocks;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
@@ -33,6 +32,7 @@ import static net.minecraft.nbt.CompressedStreamTools.writeCompressed;
 public class StructureWorldDataSanitizer
 {
     private static final String LOOT_TAG_ITEM = new ResourceLocation(RecurrentComplex.MOD_ID, "inventory_generation_tag").toString();
+    private static final String AIR_BLOCK_ID = "minecraft:air";
     private static final Set<String> RC_INTERNAL_BLOCK_IDS = new HashSet<>();
 
     static
@@ -69,7 +69,7 @@ public class StructureWorldDataSanitizer
             return;
 
         NBTTagCompound blockCollection = worldData.getCompoundTag("blockCollection");
-        String airName = Blocks.AIR.getRegistryName() != null ? Blocks.AIR.getRegistryName().toString() : "minecraft:air";
+        String airName = AIR_BLOCK_ID;
 
         if (blockCollection.hasKey("mapping", Constants.NBT.TAG_LIST))
         {
