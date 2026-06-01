@@ -7,17 +7,16 @@ package ivorius.reccomplex.gui.editstructure;
 
 import ivorius.ivtoolkit.tools.IvTranslations;
 import ivorius.reccomplex.gui.RCGuiTables;
-import ivorius.reccomplex.gui.TableDataSourceExpression;
-import ivorius.reccomplex.gui.table.GuiTable;
 import ivorius.reccomplex.gui.table.TableCells;
 import ivorius.reccomplex.gui.table.TableDelegate;
-import ivorius.reccomplex.gui.table.cell.TableCell;
 import ivorius.reccomplex.gui.table.datasource.TableDataSourceSegmented;
+import ivorius.reccomplex.world.gen.feature.structure.generic.SimpleMatcherExpression;
 import ivorius.reccomplex.world.gen.feature.structure.generic.WeightedDimensionMatcher;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
 import javax.annotation.Nonnull;
+import java.util.Arrays;
 
 /**
  * Created by lukas on 05.06.14.
@@ -35,10 +34,11 @@ public class TableDataSourceDimensionGen extends TableDataSourceSegmented
         this.generationInfo = generationInfo;
         this.tableDelegate = tableDelegate;
 
-        addSegment(0, TableDataSourceExpression.constructDefault(IvTranslations.get("reccomplex.gui.dimensions"), generationInfo.getDimensionExpression(), null));
+        addSegment(0, new TableDataSourceSimpleMatcherExpression(SimpleMatcherExpression.Target.DIMENSION, generationInfo.getDimensionExpression(), tableDelegate));
 
         addSegment(1, () -> {
-            return RCGuiTables.defaultWeightElement(val -> generationInfo.setGenerationWeight(TableCells.toDouble(val)), generationInfo.getGenerationWeight());
+            return RCGuiTables.defaultWeightElement(val -> generationInfo.setGenerationWeight(TableCells.toDouble(val)), generationInfo.getGenerationWeight(),
+                    IvTranslations.get("reccomplex.gui.random.weight"), Arrays.asList("First matching dimension entry decides the weight.", "Use 0 to deny/block this match; default or nonzero values allow it."));
         });
     }
 

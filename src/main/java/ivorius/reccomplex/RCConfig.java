@@ -19,6 +19,7 @@ import ivorius.reccomplex.utils.expression.CommandExpression;
 import ivorius.reccomplex.utils.expression.DimensionExpression;
 import ivorius.reccomplex.utils.expression.ResourceExpression;
 import ivorius.reccomplex.world.gen.feature.decoration.RCBiomeDecorator;
+import ivorius.reccomplex.world.gen.feature.SimpleEnvironmentMatcher;
 import ivorius.reccomplex.world.gen.feature.structure.Structure;
 import ivorius.reccomplex.world.gen.feature.structure.StructureRegistry;
 import ivorius.reccomplex.world.gen.feature.structure.generic.StructureSaveHandler;
@@ -93,6 +94,10 @@ public class RCConfig
 
     private static BiomeExpression universalBiomeExpression = new BiomeExpression();
     private static DimensionExpression universalDimensionExpression = new DimensionExpression();
+    private static SimpleEnvironmentMatcher<Biome> biomeWhitelist = SimpleEnvironmentMatcher.biomes(new String[0], null);
+    private static SimpleEnvironmentMatcher<Biome> biomeBlocklist = SimpleEnvironmentMatcher.biomes(new String[0], null);
+    private static SimpleEnvironmentMatcher<WorldProvider> dimensionWhitelist = SimpleEnvironmentMatcher.dimensions(new String[0], null);
+    private static SimpleEnvironmentMatcher<WorldProvider> dimensionBlocklist = SimpleEnvironmentMatcher.dimensions(new String[0], null);
 
     private static ResourceExpression failingStructureLogExpression = new ResourceExpression(s -> true);
 
@@ -156,11 +161,15 @@ public class RCConfig
             inventoryGeneratorGenerationMatcher.setExpression(config.getString("inventoryGeneratorGenerationMatcher", CATEGORY_BALANCING, "", "Resource Expression that will be applied to each loading loot table, determining if it should be set to 'active'."));
             ConfigUtil.logExpressionException(inventoryGeneratorGenerationMatcher, "inventoryGeneratorGenerationMatcher", RecurrentComplex.logger);
 
-            universalBiomeExpression.setExpression(config.getString("universalBiomeMatcher", CATEGORY_BALANCING, "", "Biome Expression that will be checked for every single structure. Use this if you want to blacklist / whitelist specific biomes that shouldn't have structures."));
+            universalBiomeExpression.setExpression(config.getString("universalBiomeMatcher", CATEGORY_BALANCING, "", "Advanced biome expression checked for every structure. Most users should use biomeWhitelist and biomeBlocklist instead. Use this only for complex expression logic. This is combined with the simple biome lists."));
             ConfigUtil.logExpressionException(universalBiomeExpression, "universalBiomeMatcher", RecurrentComplex.logger);
+            biomeWhitelist = SimpleEnvironmentMatcher.biomes(config.getStringList("biomeWhitelist", CATEGORY_BALANCING, new String[0], "Recommended for simple biome allow rules. Empty means all biomes are allowed unless blocked. Examples: minecraft:plains, plains, type=FOREST. This is combined with universalBiomeMatcher if that advanced expression is set."), RCConfig::warnConfig);
+            biomeBlocklist = SimpleEnvironmentMatcher.biomes(config.getStringList("biomeBlocklist", CATEGORY_BALANCING, new String[0], "Recommended for simple biome deny rules. Blocklist wins over whitelist. Examples: minecraft:ocean, ocean, type=WATER. This is combined with universalBiomeMatcher if that advanced expression is set."), RCConfig::warnConfig);
 
-            universalDimensionExpression.setExpression(config.getString("universalDimensionMatcher", CATEGORY_BALANCING, "", "Dimension Expression that will be checked for every single structure. Use this if you want to blacklist / whitelist specific dimensions that shouldn't have structures."));
+            universalDimensionExpression.setExpression(config.getString("universalDimensionMatcher", CATEGORY_BALANCING, "", "Advanced dimension expression checked for every structure. Most users should use dimensionWhitelist and dimensionBlocklist instead. Use this only for complex expression logic. This is combined with the simple dimension lists."));
             ConfigUtil.logExpressionException(universalDimensionExpression, "universalDimensionMatcher", RecurrentComplex.logger);
+            dimensionWhitelist = SimpleEnvironmentMatcher.dimensions(config.getStringList("dimensionWhitelist", CATEGORY_BALANCING, new String[0], "Recommended for simple dimension allow rules. Empty means all dimensions are allowed unless blocked. Examples: 0, id=-1, type=EARTH. This is combined with universalDimensionMatcher if that advanced expression is set."), RCConfig::warnConfig);
+            dimensionBlocklist = SimpleEnvironmentMatcher.dimensions(config.getStringList("dimensionBlocklist", CATEGORY_BALANCING, new String[0], "Recommended for simple dimension deny rules. Blocklist wins over whitelist. Examples: -1, type=HELL, ENDER. This is combined with universalDimensionMatcher if that advanced expression is set."), RCConfig::warnConfig);
 
             failingStructureLogExpression.setExpression(config.getString("failingStructureLogExpression", CATEGORY_BALANCING, "", "Resource Expression that will restrict logging of structures that fail to generate."));
             ConfigUtil.logExpressionException(failingStructureLogExpression, "failingStructureLogExpression", RecurrentComplex.logger);
@@ -236,12 +245,20 @@ public class RCConfig
 
     public static boolean isGenerationEnabled(Biome biome)
     {
-        return !universalBiomeExpression.isExpressionValid() || universalBiomeExpression.test(biome);
+        return (!universalBiomeExpression.isExpressionValid() || universalBiomeExpression.test(biome))
+                && SimpleEnvironmentMatcher.allows(biome, biomeWhitelist, biomeBlocklist);
     }
 
     public static boolean isGenerationEnabled(WorldProvider provider)
     {
-        return !universalDimensionExpression.isExpressionValid() || universalDimensionExpression.test(provider);
+        return (!universalDimensionExpression.isExpressionValid() || universalDimensionExpression.test(provider))
+                && SimpleEnvironmentMatcher.allows(provider, dimensionWhitelist, dimensionBlocklist);
+    }
+
+    private static void warnConfig(String message)
+    {
+        if (RecurrentComplex.logger != null)
+            RecurrentComplex.logger.warn(message);
     }
 
     public static boolean canUseCommand(String command, ICommandSender sender)

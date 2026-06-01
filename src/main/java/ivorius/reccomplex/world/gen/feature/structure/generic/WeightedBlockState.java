@@ -89,6 +89,44 @@ public class WeightedBlockState implements WeightedSelector.Item
         return nbt;
     }
 
+    @Nullable
+    private static NBTTagCompound tryParseTileEntity(JsonElement jsonElement)
+    {
+        if (jsonElement == null || jsonElement.isJsonNull())
+            return null;
+
+        if (jsonElement.isJsonPrimitive() && jsonElement.getAsJsonPrimitive().isString())
+        {
+            String value = jsonElement.getAsString().trim();
+            if (value.length() == 0 || "null".equals(value))
+                return null;
+
+            if (value.charAt(0) == '{' || value.charAt(0) == '[')
+            {
+                try
+                {
+                    NBTTagCompound json = tryParseTileEntity(new JsonParser().parse(value));
+                    if (json != null)
+                        return json;
+                }
+                catch (JsonParseException ignored)
+                {
+                }
+            }
+
+            return tryParse(value);
+        }
+
+        try
+        {
+            return getGson().fromJson(jsonElement, NBTTagCompound.class);
+        }
+        catch (JsonParseException | IllegalStateException | ClassCastException ignored)
+        {
+            return null;
+        }
+    }
+
     @Override
     public double getWeight()
     {
@@ -136,7 +174,7 @@ public class WeightedBlockState implements WeightedSelector.Item
 
             NBTTagCompound tileEntityInfo = JsonUtils.hasString(jsonObject, "tileEntityInfo")
                     ? tryParse(JsonUtils.getString(jsonObject, "tileEntityInfo")) // Legacy
-                    : jsonObject.has("tileEntity") ? getGson().fromJson(jsonObject.get("tileEntity"), NBTTagCompound.class) : null;
+                    : tryParseTileEntity(jsonObject.get("tileEntity"));
 
             return new WeightedBlockState(weight, state, tileEntityInfo);
         }
@@ -152,7 +190,8 @@ public class WeightedBlockState implements WeightedSelector.Item
             jsonObject.addProperty("block", registry.idFromBlock(source.state.getBlock()).toString());
             jsonObject.addProperty("metadata", ivorius.ivtoolkit.blocks.BlockStates.toMetadata(source.state));
 
-            jsonObject.addProperty("tileEntity", gson.toJson(source.tileEntityInfo));
+            if (source.tileEntityInfo != null)
+                jsonObject.add("tileEntity", gson.toJsonTree(source.tileEntityInfo));
 
             return jsonObject;
         }

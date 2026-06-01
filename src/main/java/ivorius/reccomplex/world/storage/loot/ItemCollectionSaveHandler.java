@@ -10,7 +10,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
 import io.netty.buffer.ByteBuf;
 import ivorius.reccomplex.json.NBTToJson;
-import net.minecraftforge.fml.common.network.ByteBufUtils;
+import ivorius.reccomplex.utils.RCPacketBuffer;
 
 import javax.annotation.Nullable;
 
@@ -36,7 +36,7 @@ public class ItemCollectionSaveHandler
 
     public void write(ByteBuf data, GenericLootTable.Component component)
     {
-        ByteBufUtils.writeUTF8String(data, toJSON(component));
+        new RCPacketBuffer(data).writeLargeString(toJSON(component));
     }
 
     @Nullable
@@ -44,7 +44,7 @@ public class ItemCollectionSaveHandler
     {
         try
         {
-            return this.fromJSON(ByteBufUtils.readUTF8String(data));
+            return this.fromJSON(new RCPacketBuffer(data).readLargeString());
         }
         catch (InventoryLoadException e)
         {

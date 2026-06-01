@@ -7,6 +7,7 @@ package ivorius.reccomplex.network;
 
 import io.netty.buffer.ByteBuf;
 import ivorius.ivtoolkit.blocks.BlockPositions;
+import ivorius.reccomplex.utils.RCPacketBuffer;
 import ivorius.reccomplex.utils.SaveDirectoryData;
 import ivorius.reccomplex.world.gen.feature.structure.generic.GenericStructure;
 import ivorius.reccomplex.world.gen.feature.structure.generic.StructureSaveHandler;
@@ -82,7 +83,7 @@ public class PacketEditStructure implements IMessage
     public void fromBytes(ByteBuf buf)
     {
         structureID = ByteBufUtils.readUTF8String(buf);
-        structureInfo = StructureSaveHandler.INSTANCE.fromJSON(ByteBufUtils.readUTF8String(buf), null);
+        structureInfo = StructureSaveHandler.INSTANCE.fromJSON(new RCPacketBuffer(buf).readLargeString(), null);
         lowerCoord = BlockPositions.readFromBuffer(buf);
         saveDirectoryData = SaveDirectoryData.readFrom(buf);
     }
@@ -91,7 +92,7 @@ public class PacketEditStructure implements IMessage
     public void toBytes(ByteBuf buf)
     {
         ByteBufUtils.writeUTF8String(buf, structureID);
-        ByteBufUtils.writeUTF8String(buf, StructureSaveHandler.INSTANCE.toJSON(structureInfo));
+        new RCPacketBuffer(buf).writeLargeString(StructureSaveHandler.INSTANCE.toJSON(structureInfo));
         BlockPositions.writeToBuffer(lowerCoord, buf);
         saveDirectoryData.writeTo(buf);
     }

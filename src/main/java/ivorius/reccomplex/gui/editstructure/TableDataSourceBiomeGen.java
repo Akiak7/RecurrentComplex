@@ -7,15 +7,16 @@ package ivorius.reccomplex.gui.editstructure;
 
 import ivorius.ivtoolkit.tools.IvTranslations;
 import ivorius.reccomplex.gui.RCGuiTables;
-import ivorius.reccomplex.gui.TableDataSourceExpression;
 import ivorius.reccomplex.gui.table.TableCells;
 import ivorius.reccomplex.gui.table.TableDelegate;
 import ivorius.reccomplex.gui.table.datasource.TableDataSourceSegmented;
+import ivorius.reccomplex.world.gen.feature.structure.generic.SimpleMatcherExpression;
 import ivorius.reccomplex.world.gen.feature.structure.generic.WeightedBiomeMatcher;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
 import javax.annotation.Nonnull;
+import java.util.Arrays;
 
 /**
  * Created by lukas on 05.06.14.
@@ -33,10 +34,11 @@ public class TableDataSourceBiomeGen extends TableDataSourceSegmented
         this.generationInfo = generationInfo;
         this.tableDelegate = tableDelegate;
 
-        addSegment(0, TableDataSourceExpression.constructDefault(IvTranslations.get("reccomplex.gui.biomes"), generationInfo.getBiomeExpression(), null));
+        addSegment(0, new TableDataSourceSimpleMatcherExpression(SimpleMatcherExpression.Target.BIOME, generationInfo.getBiomeExpression(), tableDelegate));
 
         addSegment(1, () -> {
-            return RCGuiTables.defaultWeightElement(val -> generationInfo.setGenerationWeight(TableCells.toDouble(val)), generationInfo.getGenerationWeight());
+            return RCGuiTables.defaultWeightElement(val -> generationInfo.setGenerationWeight(TableCells.toDouble(val)), generationInfo.getGenerationWeight(),
+                    IvTranslations.get("reccomplex.gui.random.weight"), Arrays.asList("First matching biome entry decides the weight.", "Use 0 to deny/block this match; default or nonzero values allow it."));
         });
     }
 

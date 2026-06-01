@@ -6,6 +6,7 @@
 package ivorius.reccomplex.network;
 
 import io.netty.buffer.ByteBuf;
+import ivorius.reccomplex.utils.RCPacketBuffer;
 import ivorius.reccomplex.world.gen.feature.structure.generic.GenericStructure;
 import ivorius.reccomplex.world.gen.feature.structure.generic.StructureSaveHandler;
 import ivorius.reccomplex.utils.SaveDirectoryData;
@@ -67,7 +68,7 @@ public class PacketSaveStructure implements IMessage
     public void fromBytes(ByteBuf buf)
     {
         structureID = ByteBufUtils.readUTF8String(buf);
-        structureInfo = StructureSaveHandler.INSTANCE.fromJSON(ByteBufUtils.readUTF8String(buf), null);
+        structureInfo = StructureSaveHandler.INSTANCE.fromJSON(new RCPacketBuffer(buf).readLargeString(), null);
         saveDirectoryDataResult = SaveDirectoryData.Result.readFrom(buf);
     }
 
@@ -75,7 +76,7 @@ public class PacketSaveStructure implements IMessage
     public void toBytes(ByteBuf buf)
     {
         ByteBufUtils.writeUTF8String(buf, structureID);
-        ByteBufUtils.writeUTF8String(buf, StructureSaveHandler.INSTANCE.toJSON(structureInfo));
+        new RCPacketBuffer(buf).writeLargeString(StructureSaveHandler.INSTANCE.toJSON(structureInfo));
         saveDirectoryDataResult.writeTo(buf);
     }
 }

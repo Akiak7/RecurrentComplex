@@ -49,6 +49,12 @@ public class WorldGenStructures
 
     private static final ConcurrentMap<Long, ChunkLockHolder> CHUNK_LOCKS = new ConcurrentHashMap<>();
 
+    /*
+     * World generation only needs to block work that touches the same chunks. Metadata reads and chunk
+     * check marks still synchronize on WorldStructureGenerationData, but actual planning locks the
+     * current chunk and complementation locks every rasterized chunk for the structure. Multiple chunks
+     * are always locked by sorted key so overlapping structure complements cannot deadlock each other.
+     */
     private static class ChunkLockHolder
     {
         final ReentrantLock lock = new ReentrantLock();

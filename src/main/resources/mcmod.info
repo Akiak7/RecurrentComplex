@@ -1,13 +1,13 @@
 [
 {
   "modid": "reccomplex",
-  "name": "Recurrent Complex",
+  "name": "Recurrent Complex Volts",
   "description": "Adds structures to worldgen, handles exporting and importing structures, and provides build tools.",
-  "version": "${version}",
-  "mcversion": "${mcversion}",
+  "version": "2.0.0.4",
+  "mcversion": "1.12.2",
   "url": "",
   "updateUrl": "",
-  "authorList": ["Ivorius"],
+  "authorList": ["Ivorius", "Akiak"],
   "credits": "See structurecredits.txt for full default structure list credits.",
   "logoFile": "gfx/reccomplex/logo.png",
   "screenshots": [],
