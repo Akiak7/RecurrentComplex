@@ -168,6 +168,11 @@ public class WorldStructureGenerationData extends WorldSavedData
         return added;
     }
 
+    public boolean isChunkChecked(ChunkPos coords)
+    {
+        return checkedChunks.contains(ChunkPos.asLong(coords.x, coords.z));
+    }
+
     //
     public boolean checkChunkFinal(ChunkPos coords)
     {
@@ -175,6 +180,11 @@ public class WorldStructureGenerationData extends WorldSavedData
         if (added)
             markDirty();
         return added;
+    }
+
+    public boolean isChunkCheckedFinal(ChunkPos coords)
+    {
+        return checkedChunksFinal.contains(ChunkPos.asLong(coords.x, coords.z));
     }
 
     @Override

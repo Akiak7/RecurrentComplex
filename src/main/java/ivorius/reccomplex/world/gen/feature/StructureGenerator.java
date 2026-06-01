@@ -237,6 +237,38 @@ public class StructureGenerator<S extends NBTStorable>
     }
 
     @Nonnull
+    public GenerationResult test()
+    {
+        Optional<S> optionalInstanceData;
+
+        try {
+            optionalInstanceData = instanceData();
+        }
+        catch (Exception e) {
+            return new GenerationResult.Failure.Exception(e);
+        }
+
+        if (!optionalInstanceData.isPresent())
+            return GenerationResult.Failure.placement;
+
+        Optional<StructureSpawnContext> optionalSpawn = spawn();
+        if (!optionalSpawn.isPresent())
+            return GenerationResult.Failure.placement;
+
+        StructureSpawnContext spawn = optionalSpawn.get();
+        WorldServer world = spawn.environment.world;
+        StructureBoundingBox boundingBox = spawn.boundingBox;
+
+        if (boundingBox.minY < MIN_DIST_TO_LIMIT || boundingBox.maxY > world.getHeight() - 1 - MIN_DIST_TO_LIMIT)
+            return GenerationResult.Failure.outOfBounds;
+
+        if (RCConfig.avoidOverlappingGeneration && !allowOverlaps && !WorldStructureGenerationData.get(world).entriesAt(boundingBox).noneMatch(WorldStructureGenerationData.Entry::blocking))
+            return GenerationResult.Failure.structureOverlap;
+
+        return GenerationResult.Success.contemporary;
+    }
+
+    @Nonnull
     public TransformerMulti foreignTransformer()
     {
         return transformer != null ? transformer.transformer : RCConfig.getUniversalTransformer();
