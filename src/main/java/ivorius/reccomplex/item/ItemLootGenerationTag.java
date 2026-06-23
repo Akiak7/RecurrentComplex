@@ -6,9 +6,7 @@
 package ivorius.reccomplex.item;
 
 import ivorius.ivtoolkit.tools.IvTranslations;
-import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.utils.ItemHandlers;
-import ivorius.reccomplex.world.storage.loot.LootGenerationHandler;
 import ivorius.reccomplex.world.storage.loot.LootTable;
 import ivorius.reccomplex.world.storage.loot.WeightedItemCollectionRegistry;
 import net.minecraft.client.util.ITooltipFlag;
@@ -50,8 +48,7 @@ public abstract class ItemLootGenerationTag extends Item implements GeneratingIt
             if (!world.isRemote)
             {
                 IItemHandlerModifiable itemHandler = ItemHandlers.getModifiable(rightClicked);
-                generatingItem.generateInInventory(world, itemHandler, world.rand, stack, world.rand.nextInt(itemHandler.getSlots()));
-                LootGenerationHandler.generateAllTags(world, itemHandler, RecurrentComplex.specialRegistry.itemHidingMode(), world.rand);
+                return LootTagRedemption.redeemIntoInventory(world, itemHandler, generatingItem, stack, world.rand, false);
             }
 
             return true;
@@ -87,9 +84,7 @@ public abstract class ItemLootGenerationTag extends Item implements GeneratingIt
     @Override
     public EnumActionResult onItemUse(EntityPlayer player, World worldIn, BlockPos pos, EnumHand hand, EnumFacing facing, float hitX, float hitY, float hitZ)
     {
-        if (!worldIn.isRemote)
-            return applyGeneratorToInventory((WorldServer) worldIn, pos, this, player.getHeldItem(hand)) ? EnumActionResult.SUCCESS : EnumActionResult.PASS;
-        return EnumActionResult.SUCCESS;
+        return LootTagRedemption.redeemHeldOnInventory(player, worldIn, pos, hand, this);
     }
 
     @Override

@@ -3,7 +3,7 @@
   "modid": "reccomplex",
   "name": "Recurrent Complex Volts",
   "description": "Adds structures to worldgen, handles exporting and importing structures, and provides build tools.",
-  "version": "2.0.0.4",
+  "version": "2.0.0.6",
   "mcversion": "1.12.2",
   "url": "",
   "updateUrl": "",

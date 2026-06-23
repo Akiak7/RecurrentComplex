@@ -49,7 +49,7 @@ public class ItemLootGenMultiTag extends ItemLootGenerationTag implements ItemSy
     @Override
     public ActionResult<ItemStack> onItemRightClick(World worldIn, EntityPlayer playerIn, EnumHand handIn)
     {
-        if (worldIn.isRemote)
+        if (worldIn.isRemote && LootTagRedemption.canEditLootTags(playerIn))
             //noinspection MethodCallSideOnly
             openGui(playerIn, playerIn.inventory.currentItem);
 

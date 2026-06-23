@@ -16,9 +16,12 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagString;
+import net.minecraft.util.EnumActionResult;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.NonNullList;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
@@ -72,10 +75,16 @@ public class ItemLootTableComponentTag extends Item implements GeneratingItem
     public ActionResult<ItemStack> onItemRightClick(World worldIn, EntityPlayer playerIn, EnumHand handIn)
     {
         ItemStack itemStackIn = playerIn.getHeldItem(handIn);
-        if (!worldIn.isRemote)
+        if (!worldIn.isRemote && LootTagRedemption.canEditLootTags(playerIn))
             RCGuiHandler.editLootTableComponent(playerIn, componentKey(itemStackIn), component(itemStackIn), null);
 
         return super.onItemRightClick(worldIn, playerIn, handIn);
+    }
+
+    @Override
+    public EnumActionResult onItemUse(EntityPlayer player, World worldIn, BlockPos pos, EnumHand hand, EnumFacing facing, float hitX, float hitY, float hitZ)
+    {
+        return LootTagRedemption.redeemHeldOnInventory(player, worldIn, pos, hand, this);
     }
 
     @Override

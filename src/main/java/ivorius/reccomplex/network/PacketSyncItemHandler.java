@@ -6,6 +6,8 @@
 package ivorius.reccomplex.network;
 
 import ivorius.reccomplex.item.ItemSyncable;
+import ivorius.reccomplex.item.ItemLootGenerationTag;
+import ivorius.reccomplex.item.LootTagRedemption;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 
@@ -19,6 +21,9 @@ public class PacketSyncItemHandler extends PacketEditInventoryItemHandler<Packet
     {
         if (stack != null)
         {
+            if (stack.getItem() instanceof ItemLootGenerationTag && !LootTagRedemption.canEditLootTags(player))
+                return;
+
             ItemSyncable itemSyncable = (ItemSyncable) stack.getItem();
             itemSyncable.readSyncedNBT(message.data, stack);
         }

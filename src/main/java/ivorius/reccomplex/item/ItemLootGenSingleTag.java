@@ -48,7 +48,7 @@ public class ItemLootGenSingleTag extends ItemLootGenerationTag implements ItemS
     @Override
     public ActionResult<ItemStack> onItemRightClick(World worldIn, EntityPlayer playerIn, EnumHand hand)
     {
-        if (worldIn.isRemote)
+        if (worldIn.isRemote && LootTagRedemption.canEditLootTags(playerIn))
             //noinspection MethodCallSideOnly
             openGui(playerIn, playerIn.inventory.currentItem);
 

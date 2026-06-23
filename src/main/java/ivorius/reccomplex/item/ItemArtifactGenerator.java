@@ -34,11 +34,7 @@ public class ItemArtifactGenerator extends Item implements GeneratingItem
     @Override
     public EnumActionResult onItemUse(EntityPlayer playerIn, World worldIn, BlockPos pos, EnumHand hand, EnumFacing facing, float hitX, float hitY, float hitZ)
     {
-        ItemStack stack = playerIn.getHeldItem(hand);
-        if (!worldIn.isRemote)
-            return ItemLootGenerationTag.applyGeneratorToInventory((WorldServer) worldIn, pos, this, stack) ? EnumActionResult.SUCCESS : EnumActionResult.PASS;
-
-        return EnumActionResult.SUCCESS;
+        return LootTagRedemption.redeemHeldOnInventory(playerIn, worldIn, pos, hand, this);
     }
 
     @Override
