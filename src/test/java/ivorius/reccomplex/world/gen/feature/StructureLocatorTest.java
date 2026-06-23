@@ -17,6 +17,36 @@ import static org.junit.Assert.assertTrue;
 public class StructureLocatorTest
 {
     @Test
+    public void populationRandomMatchesVanillaChunkPopulationSeed()
+    {
+        long worldSeed = 98765432123456789L;
+        ChunkPos chunkPos = new ChunkPos(-17, 42);
+
+        Random expected = new Random(worldSeed);
+        long xSeed = expected.nextLong() / 2L * 2L + 1L;
+        long zSeed = expected.nextLong() / 2L * 2L + 1L;
+        expected.setSeed(((long) chunkPos.x * xSeed + (long) chunkPos.z * zSeed) ^ worldSeed);
+
+        Random actual = StructureLocator.populationRandom(worldSeed, chunkPos);
+
+        assertEquals(expected.nextLong(), actual.nextLong());
+        assertEquals(expected.nextLong(), actual.nextLong());
+        assertEquals(expected.nextInt(), actual.nextInt());
+    }
+
+    @Test
+    public void populationRandomDoesNotUseRetrogenSalt()
+    {
+        long worldSeed = 98765432123456789L;
+        ChunkPos chunkPos = new ChunkPos(-17, 42);
+
+        Random normalPopulation = StructureLocator.populationRandom(worldSeed, chunkPos);
+        Random retrogenPopulation = new Random((long) chunkPos.x * 341873128712L + (long) chunkPos.z * 132897987541L + worldSeed + 0xDEADBEEF);
+
+        assertTrue(normalPopulation.nextLong() != retrogenPopulation.nextLong());
+    }
+
+    @Test
     public void searchesOnlyOriginChunkAtRadiusZero()
     {
         List<ChunkPos> chunks = StructureLocator.chunksByDistance(new BlockPos(20, 64, -2), 0);

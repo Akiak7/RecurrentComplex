@@ -78,7 +78,7 @@ public class CommandLocateStructure extends CommandExpecting
     protected TextComponentString message(StructureLocator.Result result)
     {
         return new TextComponentString(String.format(Locale.ROOT,
-                "Predicted %s structure '%s' (%s) near %d %d %d in chunk [%d, %d], dimension %d, %.0f blocks away. Seed: %d",
+                "Predicted normal-worldgen %s structure '%s' (%s) near %d %d %d in chunk [%d, %d], dimension %d, %.0f blocks away. Seed: %d",
                 result.generationType,
                 result.structureID,
                 result.generationID,

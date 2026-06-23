@@ -38,7 +38,6 @@ import java.util.stream.Stream;
 public class StructureLocator
 {
     public static final int DEFAULT_RADIUS = 128;
-    public static final int CHUNK_POPULATION_SALT = 0xDEADBEEF;
 
     @Nonnull
     public static Optional<Result> locate(WorldServer world, String structureID, BlockPos origin, int radius, boolean uncheckedOnly)
@@ -69,7 +68,7 @@ public class StructureLocator
     @Nullable
     protected static Result locateInChunk(WorldServer world, String structureID, Structure<?> structure, BlockPos origin, ChunkPos chunkPos)
     {
-        Random random = chunkRandom(world, chunkPos);
+        Random random = populationRandom(world.getSeed(), chunkPos);
         Result best = null;
 
         for (Seeded<StaticCandidate> candidate : seedCandidates(staticCandidatesInChunk(world, chunkPos), random))
@@ -224,10 +223,13 @@ public class StructureLocator
     }
 
     @Nonnull
-    public static Random chunkRandom(WorldServer world, ChunkPos chunkPos)
+    public static Random populationRandom(long worldSeed, ChunkPos chunkPos)
     {
-        long seed = (long) chunkPos.x * 341873128712L + (long) chunkPos.z * 132897987541L + world.getSeed() + CHUNK_POPULATION_SALT;
-        return new Random(seed);
+        Random random = new Random(worldSeed);
+        long xSeed = random.nextLong() / 2L * 2L + 1L;
+        long zSeed = random.nextLong() / 2L * 2L + 1L;
+        random.setSeed(((long) chunkPos.x * xSeed + (long) chunkPos.z * zSeed) ^ worldSeed);
+        return random;
     }
 
     @Nonnull
