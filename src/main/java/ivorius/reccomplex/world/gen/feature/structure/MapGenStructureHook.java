@@ -17,6 +17,7 @@ import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.chunk.ChunkPrimer;
+import net.minecraft.world.gen.structure.MapGenScatteredFeature;
 import net.minecraft.world.gen.structure.MapGenStructure;
 import net.minecraft.world.gen.structure.StructureStart;
 import net.minecraftforge.fml.relauncher.ReflectionHelper;
@@ -163,6 +164,11 @@ public class MapGenStructureHook extends MapGenStructure
     public boolean isPositionInStructure(World worldIn, BlockPos pos)
     {
         return base.isPositionInStructure(worldIn, pos);
+    }
+
+    public boolean isSwampHut(BlockPos pos)
+    {
+        return base instanceof MapGenScatteredFeature && ((MapGenScatteredFeature) base).isSwampHut(pos);
     }
 
     @Override

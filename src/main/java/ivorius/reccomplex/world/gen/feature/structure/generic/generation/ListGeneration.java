@@ -61,9 +61,14 @@ public class ListGeneration extends GenerationType implements WeightedSelector.I
 
     public static Stream<Pair<Structure<?>, ListGeneration>> structures(StructureRegistry registry, final String listID, @Nullable final EnumFacing front)
     {
-        final Predicate<Pair<Structure<?>, ListGeneration>> predicate = input -> listID.equals(input.getRight().listID)
-                && (front == null || input.getLeft().isRotatable() || input.getRight().front == front);
+        final Predicate<Pair<Structure<?>, ListGeneration>> predicate = input -> matches(listID, front, input.getRight(), input.getLeft().isRotatable());
         return registry.getGenerationTypes(ListGeneration.class).stream().filter(predicate);
+    }
+
+    static boolean matches(String listID, @Nullable EnumFacing front, ListGeneration generationInfo, boolean rotatable)
+    {
+        return listID.equals(generationInfo.listID)
+                && (front == null || rotatable || generationInfo.front == front);
     }
 
     @Nonnull
