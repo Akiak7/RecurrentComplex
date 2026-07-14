@@ -44,7 +44,7 @@ public class RecurrentComplex
 {
     public static final String NAME = "Recurrent Complex Volts";
     public static final String MOD_ID = "reccomplex";
-    public static final String VERSION = "2.0.0.4";
+    public static final String VERSION = "2.0.0.7";
 
     public static final boolean USE_JSON_FOR_NBT = true;
     public static final boolean USE_ZIP_FOR_STRUCTURE_FILES = true;
