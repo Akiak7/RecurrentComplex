@@ -185,7 +185,7 @@ public class RCConfig
 
             mazePlacementReversesPerRoom = config.getFloat("mazePlacementReversesPerRoom", CATEGORY_BALANCING, 3, -1, 100, "Maximum number of reverses per room the maze generator can do. A higher number results in a better generation success rate, but may freeze the server temporarily.");
             mazeTimeout = config.getInt("mazeTimeout", CATEGORY_BALANCING, 20000, -1, 600000, "Maze generation timeout, in milliseconds. After the time is over, the maze generation will just give up.");
-            rayAverageMaxHeightSpread = config.getInt("rayAverageMaxHeightSpread", CATEGORY_BALANCING, 4, 0, 64, "Maximum allowed height spread for average ray placement. Set to 0 to disable height spread tolerance.");
+            rayAverageMaxHeightSpread = config.getInt("rayAverageMaxHeightSpread", CATEGORY_BALANCING, 7, 0, 64, "Maximum allowed height spread for average ray placement. Set to 0 to disable height spread tolerance.");
 
             universalTransformer = null;
             universalTransformerPresets.clear();
