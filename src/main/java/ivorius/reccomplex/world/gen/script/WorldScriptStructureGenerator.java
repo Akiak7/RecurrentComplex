@@ -39,6 +39,7 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -212,7 +213,8 @@ public class WorldScriptStructureGenerator implements WorldScript<WorldScriptStr
         }
         else
         {
-            Collection<Pair<Structure<?>, ListGeneration>> generationInfos = ListGeneration.structures(StructureRegistry.INSTANCE, structureListID, front).collect(Collectors.toList());
+            EnumFacing transformedFront = transformedListFront(front, transform);
+            Collection<Pair<Structure<?>, ListGeneration>> generationInfos = ListGeneration.structures(StructureRegistry.INSTANCE, structureListID, transformedFront).collect(Collectors.toList());
 
             if (generationInfos.size() > 0)
             {
@@ -224,12 +226,10 @@ public class WorldScriptStructureGenerator implements WorldScript<WorldScriptStr
 
                 boolean mirrorX;
                 int rotations;
-                if (front != null)
+                if (transformedFront != null)
                 {
-                    EnumFacing curFront = Directions.rotate(front, transform);
                     mirrorX = structure.isMirrorable() && structure.isRotatable() && random.nextBoolean();
-                    Integer neededRotations = Directions.getHorizontalClockwiseRotations(generationInfo.front, curFront, mirrorX);
-                    rotations = neededRotations != null ? neededRotations : 0;
+                    rotations = listStructureRotations(structure.isRotatable(), generationInfo.front, transformedFront, mirrorX);
                 }
                 else
                 {
@@ -250,6 +250,18 @@ public class WorldScriptStructureGenerator implements WorldScript<WorldScriptStr
         }
 
         return instanceData != null ? instanceData : new WorldScriptStructureGenerator.InstanceData();
+    }
+
+    @Nullable
+    static EnumFacing transformedListFront(@Nullable EnumFacing front, AxisAlignedTransform2D transform)
+    {
+        return front != null ? Directions.rotate(front, transform) : null;
+    }
+
+    static int listStructureRotations(boolean rotatable, EnumFacing front, EnumFacing transformedFront, boolean mirrorX)
+    {
+        Integer neededRotations = Directions.getHorizontalClockwiseRotations(front, transformedFront, mirrorX);
+        return rotatable && neededRotations != null ? neededRotations : 0;
     }
 
     @Override

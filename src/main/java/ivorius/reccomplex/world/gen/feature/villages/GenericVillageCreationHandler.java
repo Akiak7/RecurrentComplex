@@ -94,8 +94,11 @@ public class GenericVillageCreationHandler implements VillagerRegistry.IVillageC
 
         AxisAlignedTransform2D transform = GenericVillagePiece.getTransform(vanillaGenInfo.front, structure.isMirrorable(), structure.isRotatable(), front.getOpposite(), random);
 
-        if (!vanillaGenInfo.generatesIn(startPiece.biome) || transform == null)
+        if (!vanillaGenInfo.generatesIn(startPiece.biome))
             return kill(villagePiece);
+
+        if (transform == null)
+            return reject(villagePiece, false);
 
         int[] structureSize = RCAxisAlignedTransform.applySize(transform, structure.size());
 
@@ -105,11 +108,10 @@ public class GenericVillageCreationHandler implements VillagerRegistry.IVillageC
             return null;
 
         GenericVillagePiece genericVillagePiece = GenericVillagePiece.create(structureID, generationID, startPiece, generationDepth);
-        genericVillagePiece.seed = random.nextLong();
-
         if (genericVillagePiece == null)
             return kill(villagePiece);
 
+        genericVillagePiece.seed = random.nextLong();
         genericVillagePiece.setIds(structureID, generationID);
         genericVillagePiece.setOrientation(front, transform, strucBB);
 
@@ -118,10 +120,14 @@ public class GenericVillageCreationHandler implements VillagerRegistry.IVillageC
 
     public StructureVillagePieces.Village kill(StructureVillagePieces.PieceWeight piece)
     {
-        // TODO Hax
-        // Kill all pieces that can never spawn anyway, so they can never be selected again
-        // Can be resolved once getVillagePieceWeight adds more parameters to determine this beforehand
-        piece.villagePiecesSpawned = piece.villagePiecesLimit;
+        return reject(piece, true);
+    }
+
+    static StructureVillagePieces.Village reject(StructureVillagePieces.PieceWeight piece, boolean permanent)
+    {
+        // Permanent failures must not be selected repeatedly for the rest of this village.
+        if (permanent)
+            piece.villagePiecesSpawned = piece.villagePiecesLimit;
         return null;
     }
 

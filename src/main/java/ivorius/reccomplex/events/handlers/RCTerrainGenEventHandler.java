@@ -274,6 +274,12 @@ public class RCTerrainGenEventHandler
                         }
 
                         @Override
+                        public boolean isSwampHut(BlockPos pos)
+                        {
+                            return hook.isSwampHut(pos);
+                        }
+
+                        @Override
                         @Nullable
                         public BlockPos getNearestStructurePos(World worldIn, BlockPos pos, boolean findUnexplored)
                         {
