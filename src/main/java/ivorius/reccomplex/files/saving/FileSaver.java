@@ -8,7 +8,6 @@ package ivorius.reccomplex.files.saving;
 import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.files.FileHandler;
 import ivorius.reccomplex.files.RCFiles;
-import ivorius.reccomplex.files.loading.FileLoaderAdapter;
 import ivorius.reccomplex.files.loading.LeveledRegistry;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -47,9 +46,16 @@ public class FileSaver extends FileHandler
         return adapters.put(adapter.getId(), adapter);
     }
 
-    public void unregister(FileLoaderAdapter handler)
+    public void unregister(FileSaverAdapter handler)
     {
-        adapters.remove(handler.getSuffix());
+        Objects.requireNonNull(handler, "handler");
+        unregister(handler.getId());
+    }
+
+    public void unregister(String adapterId)
+    {
+        Objects.requireNonNull(adapterId, "adapterId");
+        adapters.remove(adapterId);
     }
 
     public Set<String> keySet()
