@@ -1,9 +1,14 @@
 package ivorius.reccomplex.world.gen.feature.structure.generic;
 
+import ivorius.reccomplex.RecurrentComplex;
+import ivorius.reccomplex.utils.FMLRemapper;
+import ivorius.reccomplex.world.gen.feature.structure.registry.MCRegistrySpecial;
 import net.minecraft.init.Bootstrap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -178,6 +183,82 @@ public class StructureWorldDataSanitizerTest
     }
 
     @Test
+    public void retainsRegisteredTileEntitiesWithoutConstructingThem()
+    {
+        String id = "reccomplex:sanitizer_constructor_test";
+        ThrowingTileEntity.constructions = 0;
+        TileEntity.register(id, ThrowingTileEntity.class);
+
+        NBTTagCompound worldData = new NBTTagCompound();
+        NBTTagCompound originalTileEntity = tileEntity(id, 0);
+        originalTileEntity.setString("malformedModPayload", "still-preserved");
+        NBTTagList tileEntities = new NBTTagList();
+        tileEntities.appendTag(originalTileEntity);
+        worldData.setTag("tileEntities", tileEntities);
+
+        StructureWorldDataSanitizer.SanitizationResult result = StructureWorldDataSanitizer.sanitize(worldData);
+        Assert.assertNotNull(result);
+
+        NBTTagList sanitized = result.getWorldData().getTagList("tileEntities", Constants.NBT.TAG_COMPOUND);
+        Assert.assertEquals(1, sanitized.tagCount());
+        Assert.assertEquals(id, sanitized.getCompoundTagAt(0).getString("id"));
+        Assert.assertEquals("still-preserved", sanitized.getCompoundTagAt(0).getString("malformedModPayload"));
+        Assert.assertEquals(0, ThrowingTileEntity.constructions);
+        Assert.assertEquals(originalTileEntity,
+                worldData.getTagList("tileEntities", Constants.NBT.TAG_COMPOUND).getCompoundTagAt(0));
+        Assert.assertTrue(result.getMissingTileEntities().isEmpty());
+    }
+
+    @Test
+    public void recognizesCanonicalAndLegacyRcSpecialTileEntities()
+    {
+        MCRegistrySpecial previousRegistry = RecurrentComplex.specialRegistry;
+        MCRegistrySpecial specialRegistry = new MCRegistrySpecial(null, new FMLRemapper());
+        specialRegistry.register(new ResourceLocation("RCStructureGenerator"), ThrowingTileEntity.class);
+        specialRegistry.register(new ResourceLocation("SGStructureGenerator"), ThrowingTileEntity.class);
+        RecurrentComplex.specialRegistry = specialRegistry;
+        ThrowingTileEntity.constructions = 0;
+
+        try
+        {
+            NBTTagCompound worldData = new NBTTagCompound();
+            NBTTagList tileEntities = new NBTTagList();
+            tileEntities.appendTag(tileEntity("RCStructureGenerator", 0));
+            tileEntities.appendTag(tileEntity("SGStructureGenerator", 1));
+            worldData.setTag("tileEntities", tileEntities);
+
+            StructureWorldDataSanitizer.SanitizationResult result = StructureWorldDataSanitizer.sanitize(worldData);
+            Assert.assertNotNull(result);
+
+            NBTTagList sanitized = result.getWorldData().getTagList("tileEntities", Constants.NBT.TAG_COMPOUND);
+            Assert.assertEquals(2, sanitized.tagCount());
+            Assert.assertEquals("RCStructureGenerator", sanitized.getCompoundTagAt(0).getString("id"));
+            Assert.assertEquals("SGStructureGenerator", sanitized.getCompoundTagAt(1).getString("id"));
+            Assert.assertEquals("preserved-RCStructureGenerator", sanitized.getCompoundTagAt(0).getString("customPayload"));
+            Assert.assertEquals("preserved-SGStructureGenerator", sanitized.getCompoundTagAt(1).getString("customPayload"));
+            Assert.assertEquals(0, ThrowingTileEntity.constructions);
+            Assert.assertEquals("RCStructureGenerator",
+                    worldData.getTagList("tileEntities", Constants.NBT.TAG_COMPOUND).getCompoundTagAt(0).getString("id"));
+            Assert.assertEquals("SGStructureGenerator",
+                    worldData.getTagList("tileEntities", Constants.NBT.TAG_COMPOUND).getCompoundTagAt(1).getString("id"));
+            Assert.assertTrue(result.getMissingTileEntities().isEmpty());
+        }
+        finally
+        {
+            RecurrentComplex.specialRegistry = previousRegistry;
+        }
+    }
+
+    @Test
+    public void preservesTileEntitiesWhenVanillaRegistryAccessFails()
+    {
+        Assert.assertTrue(StructureWorldDataSanitizer.shouldKeepTileEntity(false, null));
+        Assert.assertTrue(StructureWorldDataSanitizer.shouldKeepTileEntity(true, Boolean.FALSE));
+        Assert.assertTrue(StructureWorldDataSanitizer.shouldKeepTileEntity(false, Boolean.TRUE));
+        Assert.assertFalse(StructureWorldDataSanitizer.shouldKeepTileEntity(false, Boolean.FALSE));
+    }
+
+    @Test
     public void normalizesOfficialLegacyEntityIds()
     {
         Map<String, String> expected = new LinkedHashMap<>();
@@ -303,7 +384,7 @@ public class StructureWorldDataSanitizerTest
     }
 
     @Test
-    public void rejectsUnversionedAndHashMismatchedCaches() throws Exception
+    public void rejectsOldCacheVersionsAndHashMismatches() throws Exception
     {
         Path unversionedCache = temporaryFolder.newFile("unversioned.nbt").toPath();
         NBTTagCompound unversionedRoot = new NBTTagCompound();
@@ -315,12 +396,28 @@ public class StructureWorldDataSanitizerTest
         }
         Assert.assertNull(StructureWorldDataSanitizer.readCache(unversionedCache, "old-hash"));
 
+        Path versionOneCache = temporaryFolder.newFile("version-one.nbt").toPath();
+        NBTTagCompound versionOneRoot = new NBTTagCompound();
+        versionOneRoot.setInteger("cacheVersion", 1);
+        versionOneRoot.setString("sourceHash", "version-one-hash");
+        versionOneRoot.setTag("worldData", new NBTTagCompound());
+        try (OutputStream stream = Files.newOutputStream(versionOneCache))
+        {
+            writeCompressed(versionOneRoot, stream);
+        }
+        Assert.assertNull(StructureWorldDataSanitizer.readCache(versionOneCache, "version-one-hash"));
+
         Path currentCache = temporaryFolder.newFile("current.nbt").toPath();
         StructureWorldDataSanitizer.SanitizationResult currentResult =
                 new StructureWorldDataSanitizer.SanitizationResult(new NBTTagCompound());
         StructureWorldDataSanitizer.writeCache(currentCache, "current-hash", currentResult);
         Assert.assertNotNull(StructureWorldDataSanitizer.readCache(currentCache, "current-hash"));
         Assert.assertNull(StructureWorldDataSanitizer.readCache(currentCache, "different-hash"));
+
+        try (java.io.InputStream stream = Files.newInputStream(currentCache))
+        {
+            Assert.assertEquals(2, readCompressed(stream).getInteger("cacheVersion"));
+        }
     }
 
     @Test
@@ -477,5 +574,16 @@ public class StructureWorldDataSanitizerTest
 
         Assert.assertNotNull(worldDataBytes);
         return readCompressed(new ByteArrayInputStream(worldDataBytes));
+    }
+
+    public static class ThrowingTileEntity extends TileEntity
+    {
+        static int constructions;
+
+        public ThrowingTileEntity()
+        {
+            constructions++;
+            throw new IllegalStateException("Sanitization must not construct registered tile entities");
+        }
     }
 }

@@ -62,6 +62,11 @@ public class MCRegistrySpecial implements MCRegistry
         tileEntityMap.put(id, tileEntity);
     }
 
+    public boolean hasTileEntity(ResourceLocation id)
+    {
+        return tileEntityMap.containsKey(remapper.mapTileEntity(id));
+    }
+
     public ItemHidingRegistry itemHidingMode()
     {
         return itemHidingRegistry;
