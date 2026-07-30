@@ -8,6 +8,7 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.datafix.fixes.EntityId;
 import net.minecraft.util.datafix.fixes.TileEntityId;
 import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
@@ -32,10 +33,12 @@ import static net.minecraft.nbt.CompressedStreamTools.writeCompressed;
  */
 public class StructureWorldDataSanitizer
 {
-    private static final String LOOT_TAG_ITEM = new ResourceLocation(RecurrentComplex.MOD_ID, "inventory_generation_tag").toString();
+    private static final String CACHE_VERSION_TAG = "cacheVersion";
+    private static final int CACHE_VERSION = 1;
     private static final String AIR_BLOCK_ID = "minecraft:air";
     private static final Set<String> RC_INTERNAL_BLOCK_IDS = new HashSet<>();
     private static final TileEntityId LEGACY_TILE_ENTITY_ID_FIXER = new TileEntityId();
+    private static final EntityId LEGACY_ENTITY_ID_FIXER = new EntityId();
 
     static
     {
@@ -194,8 +197,6 @@ public class StructureWorldDataSanitizer
 
             if (keep)
             {
-                if (sanitizeLootItems(tileEntity, result))
-                    changed = true;
                 sanitized.appendTag(tileEntity);
             }
             else
@@ -211,59 +212,6 @@ public class StructureWorldDataSanitizer
             worldData.setTag("tileEntities", sanitized);
     }
 
-    private static boolean sanitizeLootItems(NBTTagCompound tileEntity, SanitizationResult result)
-    {
-        if (!tileEntity.hasKey("Items", Constants.NBT.TAG_LIST))
-            return false;
-
-        NBTTagList items = tileEntity.getTagList("Items", Constants.NBT.TAG_COMPOUND);
-        NBTTagList sanitized = new NBTTagList();
-        boolean changed = false;
-
-        for (int i = 0; i < items.tagCount(); i++)
-        {
-            NBTTagCompound item = items.getCompoundTagAt(i);
-            if (isInvalidLootItem(item, result))
-            {
-                changed = true;
-                continue;
-            }
-
-            sanitized.appendTag(item);
-        }
-
-        if (changed)
-            tileEntity.setTag("Items", sanitized);
-
-        return changed;
-    }
-
-    private static boolean isInvalidLootItem(NBTTagCompound item, SanitizationResult result)
-    {
-        if (!item.hasKey("id", Constants.NBT.TAG_STRING))
-            return false;
-
-        String itemId = item.getString("id");
-        if (!LOOT_TAG_ITEM.equals(itemId))
-            return false;
-
-        if (!item.hasKey("tag", Constants.NBT.TAG_COMPOUND))
-            return true;
-
-        NBTTagCompound tag = item.getCompoundTag("tag");
-        if (!tag.hasKey("itemCollectionKey", Constants.NBT.TAG_STRING))
-            return true;
-
-        String key = tag.getString("itemCollectionKey");
-        if (key.isEmpty())
-            return true;
-
-        boolean known = WeightedItemCollectionRegistry.INSTANCE.has(key);
-        if (!known)
-            result.recordMissingLootTable(key);
-        return !known;
-    }
-
     private static void sanitizeEntities(SanitizationResult result)
     {
         NBTTagCompound worldData = result.worldData;
@@ -277,6 +225,9 @@ public class StructureWorldDataSanitizer
         for (int i = 0; i < entities.tagCount(); i++)
         {
             NBTTagCompound entity = entities.getCompoundTagAt(i);
+            if (normalizeLegacyEntityId(entity))
+                changed = true;
+
             if (isKnownEntity(entity.getString("id")))
             {
                 sanitized.appendTag(entity);
@@ -325,6 +276,10 @@ public class StructureWorldDataSanitizer
             if (root == null)
                 return null;
 
+            if (!root.hasKey(CACHE_VERSION_TAG, Constants.NBT.TAG_INT)
+                    || root.getInteger(CACHE_VERSION_TAG) != CACHE_VERSION)
+                return null;
+
             if (!root.hasKey("sourceHash", Constants.NBT.TAG_STRING))
                 return null;
 
@@ -345,6 +300,7 @@ public class StructureWorldDataSanitizer
     public static void writeCache(Path path, String hash, SanitizationResult result) throws IOException
     {
         NBTTagCompound root = new NBTTagCompound();
+        root.setInteger(CACHE_VERSION_TAG, CACHE_VERSION);
         root.setString("sourceHash", hash);
         root.setTag("worldData", result.worldData);
         writeStringSet(root, "missingBlocks", result.missingBlocks);
@@ -428,6 +384,13 @@ public class StructureWorldDataSanitizer
         return !previousId.equals(tileEntity.getString("id"));
     }
 
+    static boolean normalizeLegacyEntityId(NBTTagCompound entity)
+    {
+        String previousId = entity.getString("id");
+        LEGACY_ENTITY_ID_FIXER.fixTagCompound(entity);
+        return !previousId.equals(entity.getString("id"));
+    }
+
     private static boolean isKnownTileEntity(@Nullable String tileEntityId)
     {
         if (tileEntityId == null || tileEntityId.isEmpty())
@@ -455,7 +418,10 @@ public class StructureWorldDataSanitizer
         for (int i = 0; i < list.tagCount(); i++)
         {
             String id = list.getStringTagAt(i);
-            if (isKnownEntity(id))
+            NBTTagCompound stub = new NBTTagCompound();
+            stub.setString("id", id);
+            normalizeLegacyEntityId(stub);
+            if (isKnownEntity(stub.getString("id")))
                 return true;
         }
 
