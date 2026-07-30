@@ -2,11 +2,11 @@ package ivorius.reccomplex.world.gen.feature.structure.generic;
 
 import com.google.common.hash.Hashing;
 import ivorius.reccomplex.RecurrentComplex;
+import ivorius.reccomplex.utils.accessor.RCAccessorTileEntity;
 import ivorius.reccomplex.world.storage.loot.WeightedItemCollectionRegistry;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.datafix.fixes.EntityId;
 import net.minecraft.util.datafix.fixes.TileEntityId;
@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static net.minecraft.nbt.CompressedStreamTools.readCompressed;
 import static net.minecraft.nbt.CompressedStreamTools.writeCompressed;
@@ -34,11 +35,12 @@ import static net.minecraft.nbt.CompressedStreamTools.writeCompressed;
 public class StructureWorldDataSanitizer
 {
     private static final String CACHE_VERSION_TAG = "cacheVersion";
-    private static final int CACHE_VERSION = 1;
+    private static final int CACHE_VERSION = 2;
     private static final String AIR_BLOCK_ID = "minecraft:air";
     private static final Set<String> RC_INTERNAL_BLOCK_IDS = new HashSet<>();
     private static final TileEntityId LEGACY_TILE_ENTITY_ID_FIXER = new TileEntityId();
     private static final EntityId LEGACY_ENTITY_ID_FIXER = new EntityId();
+    private static final AtomicBoolean TILE_ENTITY_REGISTRY_WARNING_LOGGED = new AtomicBoolean();
 
     static
     {
@@ -184,16 +186,7 @@ public class StructureWorldDataSanitizer
             NBTTagCompound tileEntity = tileEntities.getCompoundTagAt(i);
             if (normalizeLegacyTileEntityId(tileEntity))
                 changed = true;
-            boolean keep = true;
-
-            try
-            {
-                keep = TileEntity.create(null, tileEntity) != null;
-            }
-            catch (Exception e)
-            {
-                keep = false;
-            }
+            boolean keep = isKnownTileEntity(tileEntity.getString("id"));
 
             if (keep)
             {
@@ -401,12 +394,30 @@ public class StructureWorldDataSanitizer
             NBTTagCompound stub = new NBTTagCompound();
             stub.setString("id", tileEntityId);
             normalizeLegacyTileEntityId(stub);
-            return TileEntity.create(null, stub) != null;
+            ResourceLocation id = new ResourceLocation(stub.getString("id"));
+
+            boolean specialRegistered = RecurrentComplex.specialRegistry != null
+                    && RecurrentComplex.specialRegistry.hasTileEntity(id);
+            Boolean vanillaRegistered = specialRegistered ? null : RCAccessorTileEntity.isRegistered(id);
+
+            if (!specialRegistered && vanillaRegistered == null
+                    && RecurrentComplex.logger != null
+                    && TILE_ENTITY_REGISTRY_WARNING_LOGGED.compareAndSet(false, true))
+            {
+                RecurrentComplex.logger.warn("Unable to inspect the tile entity registry; preserving tile entity NBT conservatively.");
+            }
+
+            return shouldKeepTileEntity(specialRegistered, vanillaRegistered);
         }
         catch (Exception ignored)
         {
             return false;
         }
+    }
+
+    static boolean shouldKeepTileEntity(boolean specialRegistered, @Nullable Boolean vanillaRegistered)
+    {
+        return specialRegistered || vanillaRegistered == null || vanillaRegistered;
     }
 
     private static boolean hasResolvedEntities(NBTTagCompound root)
