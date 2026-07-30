@@ -35,8 +35,9 @@ import static net.minecraft.nbt.CompressedStreamTools.writeCompressed;
 public class StructureWorldDataSanitizer
 {
     private static final String CACHE_VERSION_TAG = "cacheVersion";
-    private static final int CACHE_VERSION = 2;
+    private static final int CACHE_VERSION = 3;
     private static final String AIR_BLOCK_ID = "minecraft:air";
+    private static final String MOB_SPAWNER_TILE_ENTITY_ID = "minecraft:mob_spawner";
     private static final Set<String> RC_INTERNAL_BLOCK_IDS = new HashSet<>();
     private static final TileEntityId LEGACY_TILE_ENTITY_ID_FIXER = new TileEntityId();
     private static final EntityId LEGACY_ENTITY_ID_FIXER = new EntityId();
@@ -185,6 +186,8 @@ public class StructureWorldDataSanitizer
         {
             NBTTagCompound tileEntity = tileEntities.getCompoundTagAt(i);
             if (normalizeLegacyTileEntityId(tileEntity))
+                changed = true;
+            if (normalizeLegacySpawnerEntityIds(tileEntity))
                 changed = true;
             boolean keep = isKnownTileEntity(tileEntity.getString("id"));
 
@@ -382,6 +385,30 @@ public class StructureWorldDataSanitizer
         String previousId = entity.getString("id");
         LEGACY_ENTITY_ID_FIXER.fixTagCompound(entity);
         return !previousId.equals(entity.getString("id"));
+    }
+
+    static boolean normalizeLegacySpawnerEntityIds(NBTTagCompound tileEntity)
+    {
+        if (!MOB_SPAWNER_TILE_ENTITY_ID.equals(tileEntity.getString("id")))
+            return false;
+
+        boolean changed = false;
+
+        if (tileEntity.hasKey("SpawnData", Constants.NBT.TAG_COMPOUND))
+            changed |= normalizeLegacyEntityId(tileEntity.getCompoundTag("SpawnData"));
+
+        if (tileEntity.hasKey("SpawnPotentials", Constants.NBT.TAG_LIST))
+        {
+            NBTTagList potentials = tileEntity.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND);
+            for (int i = 0; i < potentials.tagCount(); i++)
+            {
+                NBTTagCompound potential = potentials.getCompoundTagAt(i);
+                if (potential.hasKey("Entity", Constants.NBT.TAG_COMPOUND))
+                    changed |= normalizeLegacyEntityId(potential.getCompoundTag("Entity"));
+            }
+        }
+
+        return changed;
     }
 
     private static boolean isKnownTileEntity(@Nullable String tileEntityId)

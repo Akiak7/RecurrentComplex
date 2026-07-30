@@ -169,6 +169,80 @@ public class StructureWorldDataSanitizerTest
     }
 
     @Test
+    public void normalizesOnlyNestedLegacySpawnerEntityIds()
+    {
+        NBTTagCompound worldData = new NBTTagCompound();
+        NBTTagList tileEntities = new NBTTagList();
+
+        NBTTagCompound legacySpawner = tileEntity("MobSpawner", 0);
+        legacySpawner.setShort("Delay", (short) 37);
+        legacySpawner.setTag("SpawnData", spawnEntity("PigZombie", "legacy-spawn-data"));
+        NBTTagList legacyPotentials = new NBTTagList();
+        legacyPotentials.appendTag(spawnPotential("MinecartChest", "legacy-potential"));
+        legacyPotentials.appendTag(spawnPotential("missingmod:custom_mob", "mod-potential"));
+        legacySpawner.setTag("SpawnPotentials", legacyPotentials);
+        tileEntities.appendTag(legacySpawner);
+
+        NBTTagCompound modernSpawner = tileEntity("minecraft:mob_spawner", 1);
+        modernSpawner.setShort("Delay", (short) 73);
+        modernSpawner.setTag("SpawnData", spawnEntity("MinecartChest", "modern-spawn-data"));
+        NBTTagList modernPotentials = new NBTTagList();
+        modernPotentials.appendTag(spawnPotential("PigZombie", "modern-potential"));
+        modernSpawner.setTag("SpawnPotentials", modernPotentials);
+        tileEntities.appendTag(modernSpawner);
+
+        NBTTagCompound unrelatedTileEntity = tileEntity("Trap", 2);
+        unrelatedTileEntity.setTag("SpawnData", spawnEntity("PigZombie", "unrelated-spawn-data"));
+        NBTTagList unrelatedPotentials = new NBTTagList();
+        unrelatedPotentials.appendTag(spawnPotential("MinecartChest", "unrelated-potential"));
+        unrelatedTileEntity.setTag("SpawnPotentials", unrelatedPotentials);
+        tileEntities.appendTag(unrelatedTileEntity);
+
+        worldData.setTag("tileEntities", tileEntities);
+        NBTTagCompound original = worldData.copy();
+
+        StructureWorldDataSanitizer.SanitizationResult result = StructureWorldDataSanitizer.sanitize(worldData);
+        Assert.assertNotNull(result);
+
+        NBTTagList sanitized = result.getWorldData().getTagList("tileEntities", Constants.NBT.TAG_COMPOUND);
+        Assert.assertEquals(3, sanitized.tagCount());
+
+        NBTTagCompound sanitizedLegacy = sanitized.getCompoundTagAt(0);
+        Assert.assertEquals("minecraft:mob_spawner", sanitizedLegacy.getString("id"));
+        Assert.assertEquals("minecraft:zombie_pigman", sanitizedLegacy.getCompoundTag("SpawnData").getString("id"));
+        Assert.assertEquals("legacy-spawn-data", sanitizedLegacy.getCompoundTag("SpawnData").getString("customNestedPayload"));
+        Assert.assertEquals("minecraft:chest_minecart", sanitizedLegacy.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND)
+                .getCompoundTagAt(0).getCompoundTag("Entity").getString("id"));
+        Assert.assertEquals("legacy-potential", sanitizedLegacy.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND)
+                .getCompoundTagAt(0).getCompoundTag("Entity").getString("customNestedPayload"));
+        Assert.assertEquals("missingmod:custom_mob", sanitizedLegacy.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND)
+                .getCompoundTagAt(1).getCompoundTag("Entity").getString("id"));
+        Assert.assertEquals(37, sanitizedLegacy.getShort("Delay"));
+        Assert.assertEquals("preserved-MobSpawner", sanitizedLegacy.getString("customPayload"));
+
+        NBTTagCompound sanitizedModern = sanitized.getCompoundTagAt(1);
+        Assert.assertEquals("minecraft:mob_spawner", sanitizedModern.getString("id"));
+        Assert.assertEquals("minecraft:chest_minecart", sanitizedModern.getCompoundTag("SpawnData").getString("id"));
+        Assert.assertEquals("modern-spawn-data", sanitizedModern.getCompoundTag("SpawnData").getString("customNestedPayload"));
+        Assert.assertEquals("minecraft:zombie_pigman", sanitizedModern.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND)
+                .getCompoundTagAt(0).getCompoundTag("Entity").getString("id"));
+        Assert.assertEquals("modern-potential", sanitizedModern.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND)
+                .getCompoundTagAt(0).getCompoundTag("Entity").getString("customNestedPayload"));
+        Assert.assertEquals(73, sanitizedModern.getShort("Delay"));
+        Assert.assertEquals("preserved-minecraft:mob_spawner", sanitizedModern.getString("customPayload"));
+
+        NBTTagCompound sanitizedUnrelated = sanitized.getCompoundTagAt(2);
+        Assert.assertEquals("minecraft:dispenser", sanitizedUnrelated.getString("id"));
+        Assert.assertEquals("PigZombie", sanitizedUnrelated.getCompoundTag("SpawnData").getString("id"));
+        Assert.assertEquals("MinecartChest", sanitizedUnrelated.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND)
+                .getCompoundTagAt(0).getCompoundTag("Entity").getString("id"));
+
+        Assert.assertEquals(original, worldData);
+        Assert.assertTrue(result.getMissingTileEntities().isEmpty());
+        Assert.assertTrue(result.getMissingEntities().isEmpty());
+    }
+
+    @Test
     public void removesAndRecordsUnknownTileEntities()
     {
         NBTTagCompound worldData = new NBTTagCompound();
@@ -407,6 +481,17 @@ public class StructureWorldDataSanitizerTest
         }
         Assert.assertNull(StructureWorldDataSanitizer.readCache(versionOneCache, "version-one-hash"));
 
+        Path versionTwoCache = temporaryFolder.newFile("version-two.nbt").toPath();
+        NBTTagCompound versionTwoRoot = new NBTTagCompound();
+        versionTwoRoot.setInteger("cacheVersion", 2);
+        versionTwoRoot.setString("sourceHash", "version-two-hash");
+        versionTwoRoot.setTag("worldData", new NBTTagCompound());
+        try (OutputStream stream = Files.newOutputStream(versionTwoCache))
+        {
+            writeCompressed(versionTwoRoot, stream);
+        }
+        Assert.assertNull(StructureWorldDataSanitizer.readCache(versionTwoCache, "version-two-hash"));
+
         Path currentCache = temporaryFolder.newFile("current.nbt").toPath();
         StructureWorldDataSanitizer.SanitizationResult currentResult =
                 new StructureWorldDataSanitizer.SanitizationResult(new NBTTagCompound());
@@ -416,7 +501,7 @@ public class StructureWorldDataSanitizerTest
 
         try (java.io.InputStream stream = Files.newInputStream(currentCache))
         {
-            Assert.assertEquals(2, readCompressed(stream).getInteger("cacheVersion"));
+            Assert.assertEquals(3, readCompressed(stream).getInteger("cacheVersion"));
         }
     }
 
@@ -473,13 +558,38 @@ public class StructureWorldDataSanitizerTest
     }
 
     @Test
-    public void bundledOldWatchtowerHasNoOrphanDoorTileEntity() throws Exception
+    public void bundledOldWatchtowerHasModernSpawnerIdsAndNoOrphanDoorTileEntity() throws Exception
     {
         NBTTagCompound worldData = readBundledWorldData(
                 "/assets/reccomplex/structures/active/structures/overworld/OldWatchtower.rcst");
         NBTTagList tileEntities = worldData.getTagList("tileEntities", Constants.NBT.TAG_COMPOUND);
         for (int i = 0; i < tileEntities.tagCount(); i++)
             Assert.assertNotEquals("doorTileEntity", tileEntities.getCompoundTagAt(i).getString("id"));
+
+        StructureWorldDataSanitizer.SanitizationResult result = StructureWorldDataSanitizer.sanitize(worldData);
+        Assert.assertNotNull(result);
+
+        List<String> spawnDataIds = new ArrayList<>();
+        List<String> potentialIds = new ArrayList<>();
+        NBTTagList sanitized = result.getWorldData().getTagList("tileEntities", Constants.NBT.TAG_COMPOUND);
+        for (int i = 0; i < sanitized.tagCount(); i++)
+        {
+            NBTTagCompound tileEntity = sanitized.getCompoundTagAt(i);
+            if (!"minecraft:mob_spawner".equals(tileEntity.getString("id")))
+                continue;
+
+            spawnDataIds.add(tileEntity.getCompoundTag("SpawnData").getString("id"));
+            NBTTagList potentials = tileEntity.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND);
+            for (int j = 0; j < potentials.tagCount(); j++)
+                potentialIds.add(potentials.getCompoundTagAt(j).getCompoundTag("Entity").getString("id"));
+        }
+
+        Assert.assertEquals(2, spawnDataIds.size());
+        Assert.assertTrue(spawnDataIds.contains("minecraft:zombie"));
+        Assert.assertTrue(spawnDataIds.contains("minecraft:skeleton"));
+        Assert.assertEquals(2, potentialIds.size());
+        Assert.assertTrue(potentialIds.contains("minecraft:zombie"));
+        Assert.assertTrue(potentialIds.contains("minecraft:skeleton"));
     }
 
     private static NBTTagCompound tileEntity(String id, int x)
@@ -500,6 +610,22 @@ public class StructureWorldDataSanitizerTest
         entity.setInteger("x", x);
         entity.setString("customPayload", "preserved-" + id);
         return entity;
+    }
+
+    private static NBTTagCompound spawnEntity(String id, String customPayload)
+    {
+        NBTTagCompound entity = new NBTTagCompound();
+        entity.setString("id", id);
+        entity.setString("customNestedPayload", customPayload);
+        return entity;
+    }
+
+    private static NBTTagCompound spawnPotential(String id, String customPayload)
+    {
+        NBTTagCompound potential = new NBTTagCompound();
+        potential.setInteger("Weight", 1);
+        potential.setTag("Entity", spawnEntity(id, customPayload));
+        return potential;
     }
 
     private static NBTTagCompound modernLootMarker(String key, int slot)
