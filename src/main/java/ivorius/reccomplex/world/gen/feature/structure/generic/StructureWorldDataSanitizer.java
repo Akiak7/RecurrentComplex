@@ -8,6 +8,7 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.datafix.fixes.TileEntityId;
 import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 
@@ -34,6 +35,7 @@ public class StructureWorldDataSanitizer
     private static final String LOOT_TAG_ITEM = new ResourceLocation(RecurrentComplex.MOD_ID, "inventory_generation_tag").toString();
     private static final String AIR_BLOCK_ID = "minecraft:air";
     private static final Set<String> RC_INTERNAL_BLOCK_IDS = new HashSet<>();
+    private static final TileEntityId LEGACY_TILE_ENTITY_ID_FIXER = new TileEntityId();
 
     static
     {
@@ -177,6 +179,8 @@ public class StructureWorldDataSanitizer
         for (int i = 0; i < tileEntities.tagCount(); i++)
         {
             NBTTagCompound tileEntity = tileEntities.getCompoundTagAt(i);
+            if (normalizeLegacyTileEntityId(tileEntity))
+                changed = true;
             boolean keep = true;
 
             try
@@ -417,6 +421,13 @@ public class StructureWorldDataSanitizer
         return false;
     }
 
+    static boolean normalizeLegacyTileEntityId(NBTTagCompound tileEntity)
+    {
+        String previousId = tileEntity.getString("id");
+        LEGACY_TILE_ENTITY_ID_FIXER.fixTagCompound(tileEntity);
+        return !previousId.equals(tileEntity.getString("id"));
+    }
+
     private static boolean isKnownTileEntity(@Nullable String tileEntityId)
     {
         if (tileEntityId == null || tileEntityId.isEmpty())
@@ -426,6 +437,7 @@ public class StructureWorldDataSanitizer
         {
             NBTTagCompound stub = new NBTTagCompound();
             stub.setString("id", tileEntityId);
+            normalizeLegacyTileEntityId(stub);
             return TileEntity.create(null, stub) != null;
         }
         catch (Exception ignored)
