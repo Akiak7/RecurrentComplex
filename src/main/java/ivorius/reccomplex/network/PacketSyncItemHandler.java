@@ -17,6 +17,30 @@ import net.minecraft.item.ItemStack;
 public class PacketSyncItemHandler extends PacketEditInventoryItemHandler<PacketSyncItem>
 {
     @Override
+    protected boolean hasEditPermission(EntityPlayerMP player, PacketSyncItem message)
+    {
+        if (super.hasEditPermission(player, message))
+            return true;
+
+        if (!LootTagRedemption.canEditLootTags(player))
+            return false;
+
+        int inventorySlot = message.getInventorySlot();
+        if (!isInventorySlotValid(player, inventorySlot))
+            return false;
+
+        return canSyncLootTagWithoutSavingPermission(player,
+                player.inventory.getStackInSlot(inventorySlot));
+    }
+
+    static boolean canSyncLootTagWithoutSavingPermission(EntityPlayerMP player, ItemStack stack)
+    {
+        return !stack.isEmpty()
+                && stack.getItem() instanceof ItemLootGenerationTag
+                && LootTagRedemption.canEditLootTags(player);
+    }
+
+    @Override
     public void affectItem(EntityPlayerMP player, ItemStack stack, PacketSyncItem message)
     {
         if (stack.getItem() instanceof ItemSyncable)

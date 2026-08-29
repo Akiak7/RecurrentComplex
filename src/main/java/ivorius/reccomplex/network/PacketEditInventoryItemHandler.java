@@ -25,10 +25,33 @@ public abstract class PacketEditInventoryItemHandler<P extends PacketEditInvento
         NetHandlerPlayServer playServer = ctx.getServerHandler();
         EntityPlayerMP player = playServer.player;
 
-        if (RecurrentComplex.checkPerms(player)) return;
+        if (!hasEditPermission(player, message))
+        {
+            RecurrentComplex.checkPerms(player);
+            return;
+        }
 
-        affectItem(player, player.inventory.getStackInSlot(message.getInventorySlot()), message);
+        int inventorySlot = message.getInventorySlot();
+        if (!isInventorySlotValid(player, inventorySlot))
+            return;
+
+        affectItem(player, player.inventory.getStackInSlot(inventorySlot), message);
         player.openContainer.detectAndSendChanges();
+    }
+
+    static boolean isInventorySlotValid(EntityPlayerMP player, int inventorySlot)
+    {
+        return isInventorySlotValid(inventorySlot, player.inventory.getSizeInventory());
+    }
+
+    static boolean isInventorySlotValid(int inventorySlot, int inventorySize)
+    {
+        return inventorySlot >= 0 && inventorySlot < inventorySize;
+    }
+
+    protected boolean hasEditPermission(EntityPlayerMP player, P message)
+    {
+        return RecurrentComplex.canHandleSaving(player);
     }
 
     public abstract void affectItem(EntityPlayerMP player, ItemStack stack, P message);
