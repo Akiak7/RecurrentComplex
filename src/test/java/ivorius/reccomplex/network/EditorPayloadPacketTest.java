@@ -5,6 +5,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import ivorius.reccomplex.files.loading.ResourceDirectory;
 import ivorius.reccomplex.utils.SaveDirectoryData;
+import ivorius.reccomplex.utils.RCPacketBuffer;
 import ivorius.reccomplex.world.gen.feature.structure.generic.GenericStructure;
 import ivorius.reccomplex.world.storage.loot.GenericLootTable;
 import ivorius.reccomplex.world.storage.loot.ItemCollectionSaveHandler;
@@ -76,6 +77,22 @@ public class EditorPayloadPacketTest
 
         Assert.assertNotNull(decoded);
         Assert.assertEquals(largeTableID, decoded.tableID);
+    }
+
+    @Test
+    public void lootComponentHandlerUsesCompactNetworkJson() throws Exception
+    {
+        GenericLootTable.Component component = new GenericLootTable.Component();
+        component.tableID = "compact_network_payload";
+
+        ByteBuf buffer = Unpooled.buffer();
+        ItemCollectionSaveHandler.INSTANCE.write(buffer, component);
+        String networkJson = new RCPacketBuffer(buffer).readLargeString();
+        String persistedJson = ItemCollectionSaveHandler.INSTANCE.toJSON(component);
+
+        Assert.assertFalse(networkJson.contains("\n"));
+        Assert.assertTrue(networkJson.length() < persistedJson.length());
+        Assert.assertEquals(component.tableID, ItemCollectionSaveHandler.INSTANCE.fromJSON(networkJson).tableID);
     }
 
     @Test
