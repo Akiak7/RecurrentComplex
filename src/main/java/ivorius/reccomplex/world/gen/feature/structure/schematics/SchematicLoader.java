@@ -81,7 +81,29 @@ public class SchematicLoader
 
     public static void writeSchematicByName(SchematicFile schematic, String name)
     {
-        writeSchematicToFile(schematic, new File(getValidatedSchematicsFile(), name + ".schematic"));
+        File directory = getValidatedSchematicsFile();
+        File file = new File(directory, name + ".schematic");
+
+        try
+        {
+            if (!isFileInDirectory(directory, file))
+            {
+                RecurrentComplex.logger.error("Refusing to write schematic outside its directory: " + name);
+                return;
+            }
+        }
+        catch (IOException e)
+        {
+            RecurrentComplex.logger.error("Error validating schematic path: " + name, e);
+            return;
+        }
+
+        writeSchematicToFile(schematic, file);
+    }
+
+    static boolean isFileInDirectory(File directory, File file) throws IOException
+    {
+        return file.getCanonicalPath().startsWith(directory.getCanonicalPath() + File.separator);
     }
 
     public static void writeSchematicToFile(SchematicFile schematic, File file)

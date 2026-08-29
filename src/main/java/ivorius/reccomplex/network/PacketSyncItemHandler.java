@@ -19,7 +19,7 @@ public class PacketSyncItemHandler extends PacketEditInventoryItemHandler<Packet
     @Override
     public void affectItem(EntityPlayerMP player, ItemStack stack, PacketSyncItem message)
     {
-        if (stack != null)
+        if (stack.getItem() instanceof ItemSyncable)
         {
             if (stack.getItem() instanceof ItemLootGenerationTag && !LootTagRedemption.canEditLootTags(player))
                 return;

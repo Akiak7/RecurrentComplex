@@ -21,13 +21,20 @@ public class ItemCollectionSaveHandler
 {
     public static final ItemCollectionSaveHandler INSTANCE = new ItemCollectionSaveHandler();
 
-    private Gson gson = createGson();
+    private final Gson gson = createGson();
+    private final Gson gsonCompact = createGson(false);
 
     public Gson createGson()
     {
+        return createGson(true);
+    }
+
+    private Gson createGson(boolean prettyPrinting)
+    {
         GsonBuilder builder = new GsonBuilder();
 
-        builder.setPrettyPrinting();
+        if (prettyPrinting)
+            builder.setPrettyPrinting();
         builder.registerTypeAdapter(GenericLootTable.Component.class, new GenericLootTable.Component.Serializer());
         NBTToJson.registerSafeNBTSerializer(builder);
 
@@ -36,7 +43,7 @@ public class ItemCollectionSaveHandler
 
     public void write(ByteBuf data, GenericLootTable.Component component)
     {
-        new RCPacketBuffer(data).writeLargeString(toJSON(component));
+        new RCPacketBuffer(data).writeLargeString(gsonCompact.toJson(component, GenericLootTable.Component.class));
     }
 
     @Nullable

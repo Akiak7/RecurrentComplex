@@ -38,6 +38,10 @@ public class PacketSpawnTweaksHandler extends SchedulingMessageHandler<PacketSpa
     @Override
     public void processServer(PacketSpawnTweaks message, MessageContext ctx, WorldServer server)
     {
+        EntityPlayerMP player = ctx.getServerHandler().player;
+
+        if (RecurrentComplex.checkPerms(player)) return;
+
         RCConfig.spawnTweaks.clear();
         RCConfig.spawnTweaks.putAll(message.getData());
 
