@@ -109,6 +109,15 @@ public class ServerPacketAuthorizationTest
     }
 
     @Test
+    public void inventorySlotValidationRejectsNegativeAndPastEndSlots()
+    {
+        Assert.assertFalse(PacketEditInventoryItemHandler.isInventorySlotValid(-1, 41));
+        Assert.assertTrue(PacketEditInventoryItemHandler.isInventorySlotValid(0, 41));
+        Assert.assertTrue(PacketEditInventoryItemHandler.isInventorySlotValid(40, 41));
+        Assert.assertFalse(PacketEditInventoryItemHandler.isInventorySlotValid(41, 41));
+    }
+
+    @Test
     public void unauthorizedTileEntityEditReturnsBeforePayloadAccess()
     {
         new PacketEditTileEntityHandler().processServer(null, context, null);

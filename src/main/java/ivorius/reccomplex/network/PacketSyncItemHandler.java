@@ -25,8 +25,12 @@ public class PacketSyncItemHandler extends PacketEditInventoryItemHandler<Packet
         if (!LootTagRedemption.canEditLootTags(player))
             return false;
 
+        int inventorySlot = message.getInventorySlot();
+        if (!isInventorySlotValid(player, inventorySlot))
+            return false;
+
         return canSyncLootTagWithoutSavingPermission(player,
-                player.inventory.getStackInSlot(message.getInventorySlot()));
+                player.inventory.getStackInSlot(inventorySlot));
     }
 
     static boolean canSyncLootTagWithoutSavingPermission(EntityPlayerMP player, ItemStack stack)
