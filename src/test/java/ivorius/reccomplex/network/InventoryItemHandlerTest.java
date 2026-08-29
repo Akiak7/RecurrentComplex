@@ -4,15 +4,24 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import ivorius.reccomplex.item.ItemEventHandler;
 import ivorius.reccomplex.item.ItemSyncable;
+import net.minecraft.init.Bootstrap;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import org.junit.Assert;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 public class InventoryItemHandlerTest
 {
+    @BeforeClass
+    public static void bootstrap()
+    {
+        if (!Bootstrap.isRegistered())
+            Bootstrap.register();
+    }
+
     @Test
     public void unrelatedItemsAreIgnored()
     {
