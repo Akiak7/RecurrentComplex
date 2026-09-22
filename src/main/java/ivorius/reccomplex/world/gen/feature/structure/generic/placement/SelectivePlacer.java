@@ -10,6 +10,7 @@ import com.google.gson.reflect.TypeToken;
 import ivorius.ivtoolkit.blocks.BlockAreas;
 import ivorius.ivtoolkit.blocks.BlockSurfacePos;
 import ivorius.ivtoolkit.blocks.IvBlockCollection;
+import ivorius.ivtoolkit.world.chunk.gen.StructureBoundingBoxes;
 import ivorius.reccomplex.RCConfig;
 import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.json.JsonUtils;
@@ -99,10 +100,17 @@ public class SelectivePlacer implements Placer
                 .filter(p -> sourceMatcher.evaluate(blockCollection.getBlockState(p)))
                 .collect(Collectors.toSet());
 
-        // Then prefer the subset that already has neighbouring chunks generated. This reduces cascading chunk
-        // generation but we keep the original footprint as a fallback.
+        // Check destination world chunks, while keeping the footprint in structure-local coordinates
+        // for the downstream placer. Keep the original footprint as a fallback.
+        int[] size = blockCollection.area().areaSize();
+        BlockPos lower = StructureBoundingBoxes.min(context.boundingBox);
         Set<BlockPos> safeSurface = surface.stream()
-            .filter(p -> !RCConfig.avoidPlacerChunkGeneration || context.environment.world.isChunkGeneratedAt(p.getX() >> 4, p.getZ() >> 4))
+            .filter(p -> {
+                if (!RCConfig.avoidPlacerChunkGeneration)
+                    return true;
+                BlockPos worldPos = context.transform.apply(p, size).add(lower);
+                return context.environment.world.isChunkGeneratedAt(worldPos.getX() >> 4, worldPos.getZ() >> 4);
+            })
             .collect(Collectors.toSet());
 
         return placer.getContents().place(context, blockCollection, safeSurface.isEmpty() ? surface : safeSurface);
