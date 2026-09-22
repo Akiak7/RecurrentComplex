@@ -63,6 +63,12 @@ public class WorldStructureGenerationData extends WorldSavedData
 
     public static WorldStructureGenerationData get(World world)
     {
+        return RCGenerationDiagnostics.get().enabled()
+                ? RCGenerationDiagnostics.get().data(world, () -> getInternal(world)) : getInternal(world);
+    }
+
+    private static WorldStructureGenerationData getInternal(World world)
+    {
         WorldStructureGenerationData data = (WorldStructureGenerationData) world.getPerWorldStorage().getOrLoadData(WorldStructureGenerationData.class, IDENTIFIER);
         if (data == null)
         {
@@ -127,6 +133,7 @@ public class WorldStructureGenerationData extends WorldSavedData
                 intersection.add(chunkPosFromLong(pos));
         }
 
+        RCGenerationDiagnostics.get().entryEvent("ENTRY_ADD", this, entry);
         return Collections.unmodifiableSet(intersection);
     }
 
@@ -147,6 +154,7 @@ public class WorldStructureGenerationData extends WorldSavedData
             instanceMap.remove(((StructureEntry) entry).getStructureID(), (StructureEntry) entry);
 
         markDirty();
+        RCGenerationDiagnostics.get().entryEvent("ENTRY_REMOVE", this, entry);
         return entry;
     }
 
@@ -163,6 +171,7 @@ public class WorldStructureGenerationData extends WorldSavedData
     public boolean checkChunk(ChunkPos coords)
     {
         boolean added = checkedChunks.add(ChunkPos.asLong(coords.x, coords.z));
+        RCGenerationDiagnostics.get().checked(this, coords.x, coords.z, false, added);
         if (added)
             markDirty();
         return added;
@@ -177,6 +186,7 @@ public class WorldStructureGenerationData extends WorldSavedData
     public boolean checkChunkFinal(ChunkPos coords)
     {
         boolean added = checkedChunksFinal.add(ChunkPos.asLong(coords.x, coords.z));
+        RCGenerationDiagnostics.get().checked(this, coords.x, coords.z, true, added);
         if (added)
             markDirty();
         return added;
@@ -190,6 +200,7 @@ public class WorldStructureGenerationData extends WorldSavedData
     @Override
     public void readFromNBT(NBTTagCompound compound)
     {
+        RCGenerationDiagnostics.get().dataRead(this, compound, true);
         entryMap.clear();
         chunkMap.clear();
         instanceMap.clear();
@@ -200,6 +211,7 @@ public class WorldStructureGenerationData extends WorldSavedData
         NBTTagLists.intArraysFrom(compound, "checkedChunks").forEach(ints -> checkedChunks.add(ChunkPos.asLong(ints[0], ints[1])));
         checkedChunksFinal.clear();
         NBTTagLists.intArraysFrom(compound, "checkedChunksFinal").forEach(ints -> checkedChunksFinal.add(ChunkPos.asLong(ints[0], ints[1])));
+        RCGenerationDiagnostics.get().dataRead(this, compound, false);
     }
 
     @Override

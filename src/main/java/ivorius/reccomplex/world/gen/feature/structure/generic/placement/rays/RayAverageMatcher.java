@@ -14,6 +14,7 @@ import ivorius.ivtoolkit.tools.IvTranslations;
 import ivorius.ivtoolkit.world.WorldCache;
 import ivorius.ivtoolkit.world.chunk.gen.StructureBoundingBoxes;
 import ivorius.reccomplex.RCConfig;
+import ivorius.reccomplex.world.gen.feature.RCGenerationDiagnostics;
 import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.gui.TableDataSourceExpression;
 import ivorius.reccomplex.gui.table.TableDelegate;
@@ -97,12 +98,19 @@ public class RayAverageMatcher extends FactorLimit.Ray
                     BlockPos found = findFirstBlock(pos, predicate, up, wHeight);
                     if (found != null)
                         list.add(found.getY() - surfacePos.getY());
+                    if (RCGenerationDiagnostics.get().recording())
+                        RCGenerationDiagnostics.get().sample("average", found != null ? found : surfacePos,
+                                "startY=" + (surfacePos.getY() + y) + " up=" + up + " hit=" + (found != null)
+                                        + " offset=" + (found == null ? "none" : found.getY() - surfacePos.getY()), found != null);
                 }
             }
         }
 
         if (list.isEmpty())
+        {
+            if (RCGenerationDiagnostics.get().recording()) RCGenerationDiagnostics.get().detail("average hits=0 result=no-hit");
             return -1;
+        }
 
         int[] sampledOffsets = list.toArray();
 
@@ -117,9 +125,16 @@ public class RayAverageMatcher extends FactorLimit.Ray
         }
 
         if (maxSpread > 0 && max - min > maxSpread)
+        {
+            if (RCGenerationDiagnostics.get().recording()) RCGenerationDiagnostics.get().detail("average hits=" + list.size()
+                    + " min=" + min + " max=" + max + " spreadLimit=" + maxSpread + " result=spread-rejected");
             return -1;
+        }
 
-        return robustAverage(sampledOffsets);
+        int average = robustAverage(sampledOffsets);
+        if (RCGenerationDiagnostics.get().recording()) RCGenerationDiagnostics.get().detail("average hits=" + list.size()
+                + " min=" + min + " max=" + max + " spreadLimit=" + maxSpread + " result=" + average);
+        return average;
     }
 
     protected static int robustAverage(int... values)
@@ -173,8 +188,11 @@ public class RayAverageMatcher extends FactorLimit.Ray
         Set<BlockPos> shiftedSurface = shifted(context, collection, surface);
 
         int averageGroundLevel = getAverageGroundLevel(up, y, shiftedSurface,
-                blockPos -> canProbe(context, blockPos)
-                        && destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, blockPos)), cache.world.getHeight(),
+                blockPos -> {
+                    boolean available = canProbe(context, blockPos);
+                    if (!available && RCGenerationDiagnostics.get().recording()) RCGenerationDiagnostics.get().unavailableProbe(blockPos);
+                    return available && destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, blockPos));
+                }, cache.world.getHeight(),
                 samples, context.random, RCConfig.rayAverageMaxHeightSpread);
         return averageGroundLevel >= 0 ? OptionalInt.of(averageGroundLevel) : OptionalInt.empty();
     }

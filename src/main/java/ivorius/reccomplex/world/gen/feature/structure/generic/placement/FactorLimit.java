@@ -17,6 +17,7 @@ import ivorius.reccomplex.gui.table.cell.TitledCell;
 import ivorius.reccomplex.gui.table.datasource.TableDataSource;
 import ivorius.reccomplex.gui.table.datasource.TableDataSourceSupplied;
 import ivorius.reccomplex.json.JsonUtils;
+import ivorius.reccomplex.world.gen.feature.RCGenerationDiagnostics;
 import ivorius.reccomplex.json.SerializableStringTypeRegistry;
 import ivorius.reccomplex.utils.IntegerRanges;
 import ivorius.ivtoolkit.util.LineSelection;
@@ -84,6 +85,8 @@ public class FactorLimit extends GenericPlacer.Factor
         {
             int before = pos;
             OptionalInt cast = ray.cast(cache, context, blockCollection, surface, pos);
+            if (RCGenerationDiagnostics.get().recording()) RCGenerationDiagnostics.get().detail("ray=" + ray.getClass().getSimpleName()
+                    + " from=" + before + " result=" + cast + " weight=" + ray.weight);
             if (cast.isPresent())
             {
                 pos = cast.getAsInt();

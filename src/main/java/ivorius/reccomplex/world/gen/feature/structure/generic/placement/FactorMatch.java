@@ -15,6 +15,7 @@ import ivorius.ivtoolkit.world.WorldCache;
 import ivorius.ivtoolkit.world.chunk.gen.StructureBoundingBoxes;
 import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.RCConfig;
+import ivorius.reccomplex.world.gen.feature.RCGenerationDiagnostics;
 import ivorius.reccomplex.gui.editstructure.placer.TableDataSourceFactorMatch;
 import ivorius.reccomplex.gui.table.TableDelegate;
 import ivorius.reccomplex.gui.table.TableNavigator;
@@ -74,7 +75,11 @@ public class FactorMatch extends GenericPlacer.Factor
 
         for (BlockPos pos : sources)
         {
-            if (canProbe(context, pos) && destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, pos)))
+            boolean available = canProbe(context, pos);
+            boolean match = available && destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, pos));
+            if (RCGenerationDiagnostics.get().recording())
+                RCGenerationDiagnostics.get().sample("factor-match", pos, "available=" + available + " matched=" + match, false);
+            if (match)
                 matched++;
             else if (--failChances < 0)
                 break;  // Already lost

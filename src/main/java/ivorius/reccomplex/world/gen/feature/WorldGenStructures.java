@@ -209,7 +209,10 @@ public class WorldGenStructures
         for (WorldStructureGenerationData.StructureEntry entry : complement)
         {
             if (entry.preventComplementation())
+            {
+                RCGenerationDiagnostics.get().completionSkip(world, entry, chunkPos.x, chunkPos.z, "preventComplementation");
                 continue;
+            }
 
             Set<ChunkPos> relevantChunks = new HashSet<>(entry.rasterize());
             relevantChunks.add(chunkPos);
@@ -221,12 +224,14 @@ public class WorldGenStructures
 
                 if (structure == null)
                 {
+                    RCGenerationDiagnostics.get().completionSkip(world, entry, chunkPos.x, chunkPos.z, "missing-structure");
                     RecurrentComplex.logger.warn(String.format("Can't find structure %s (%s) to complement in %s (%d)", entry.getStructureID(), entry.getUuid(), chunkPos, world.provider.getDimension()));
                     continue;
                 }
 
                 if (entry.instanceData == null && !entry.firstTime)
                 {
+                    RCGenerationDiagnostics.get().completionSkip(world, entry, chunkPos.x, chunkPos.z, "missing-instance-data");
                     RecurrentComplex.logger.warn(String.format("Can't find instance data of %s (%s) to complement in %s (%d)", entry.getStructureID(), entry.getUuid(), chunkPos, world.provider.getDimension()));
                     continue;
                 }
@@ -234,6 +239,7 @@ public class WorldGenStructures
                 new StructureGenerator<>(structure).world(world).generationInfo(entry.generationInfoID)
                         .seed(chunkSeed(entry.seed, chunkPos)).boundingBox(entry.boundingBox).transform(entry.transform).generationBB(Structures.chunkBoundingBox(chunkPos, true))
                         .structureID(entry.getStructureID()).instanceData(entry.instanceData)
+                        .diagnosticEntry(entry.getUuid())
                         // Could use entry.firstTime but then StructureGenerator would add a new entry
                         .maturity(StructureSpawnContext.GenerateMaturity.COMPLEMENT)
                         .generate();

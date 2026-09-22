@@ -19,6 +19,7 @@ import ivorius.reccomplex.gui.RCGuiHandler;
 import ivorius.reccomplex.gui.container.IvGuiRegistry;
 import ivorius.mcopts.translation.ServerTranslations;
 import ivorius.reccomplex.world.gen.feature.structure.registry.MCRegistrySpecial;
+import ivorius.reccomplex.world.gen.feature.RCGenerationDiagnostics;
 import ivorius.reccomplex.world.gen.feature.structure.schematics.SchematicLoader;
 import ivorius.reccomplex.utils.*;
 import net.minecraft.entity.player.EntityPlayer;
@@ -138,6 +139,7 @@ public class RecurrentComplex
 
         forgeEventHandler = new RCForgeEventHandler();
         forgeEventHandler.register();
+        RCGenerationDiagnostics.get().register();
         terrainEventHandler = new RCTerrainGenEventHandler();
         terrainEventHandler.register();
         recurrentComplexEventHandler = new RCRecurrentComplexEventHandler();

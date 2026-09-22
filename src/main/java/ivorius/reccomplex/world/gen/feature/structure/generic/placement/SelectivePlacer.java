@@ -13,6 +13,7 @@ import ivorius.ivtoolkit.blocks.IvBlockCollection;
 import ivorius.ivtoolkit.world.chunk.gen.StructureBoundingBoxes;
 import ivorius.reccomplex.RCConfig;
 import ivorius.reccomplex.RecurrentComplex;
+import ivorius.reccomplex.world.gen.feature.RCGenerationDiagnostics;
 import ivorius.reccomplex.json.JsonUtils;
 import ivorius.reccomplex.utils.algebra.ExpressionCache;
 import ivorius.reccomplex.utils.expression.BlockExpression;
@@ -113,6 +114,9 @@ public class SelectivePlacer implements Placer
             })
             .collect(Collectors.toSet());
 
+        if (RCGenerationDiagnostics.get().recording()) RCGenerationDiagnostics.get().detail("baseline=" + baseline
+                + " safeBaseline=" + safeBaseline + " source=" + sourceMatcher.getExpression() + " preset=" + placer.getPreset()
+                + " footprint=" + surface.size() + " available=" + safeSurface.size());
         return placer.getContents().place(context, blockCollection, safeSurface.isEmpty() ? surface : safeSurface);
     }
 

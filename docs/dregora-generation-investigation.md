@@ -1,5 +1,7 @@
 **Dregora compatibility investigation — 22 September 2026**
 
+Implementation follow-up: the proposed diagnostics below are now available in a test build. See the [tester guide](dregora-diagnostic-tester-guide.md) and [validation notes](dregora-diagnostic-notes.md). The source findings below remain the basis for the comparison; no live Dregora fix has been established.
+
 The reported cutoff improvement with partial generation ON is consistent with restoring native Volts generation. It does not explain why the earlier integration-disabled run had cutoffs: that run should also use the native handler. No Dregora fix has been demonstrated. Floating heights remain a separate investigation.
 
 **Evidence and versions.** Tester observations supplied for this investigation are: (1) partial generation ON fixes megastructure cutoffs; (2) it does not fix floating towers; (3) another floating tower occurred with `rayAverageMaxHeightSpread=0`; (4) earlier broken megastructure screenshots were taken with the entire RLTweaker RC integration disabled. These statements are preserved without assuming identical worlds, settings, jars, or restart history.

@@ -12,6 +12,7 @@ import ivorius.ivtoolkit.util.IvStreams;
 import ivorius.ivtoolkit.world.WorldCache;
 import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.RCConfig;
+import ivorius.reccomplex.world.gen.feature.RCGenerationDiagnostics;
 import ivorius.reccomplex.gui.TableDataSourceExpression;
 import ivorius.reccomplex.gui.table.TableDelegate;
 import ivorius.reccomplex.gui.table.TableNavigator;
@@ -74,7 +75,11 @@ public class RayMatcher extends FactorLimit.Ray
         IvStreams.visit(surface.stream(), surfacePos ->
         {
             pos.setPos(surfacePos.getX(), surfacePos.getY() + y, surfacePos.getZ());
-            if (canProbe(context, pos) && destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, pos)))
+            boolean available = canProbe(context, pos);
+            boolean matched = available && destMatcher.evaluate(() -> PositionedBlockExpression.Argument.at(cache, pos));
+            if (RCGenerationDiagnostics.get().recording())
+                RCGenerationDiagnostics.get().sample("matcher", pos, "available=" + available + " matched=" + matched, matched);
+            if (matched)
                 return --need[0] > 0;
             else
                 return --chances[0] > 0; // Already lost

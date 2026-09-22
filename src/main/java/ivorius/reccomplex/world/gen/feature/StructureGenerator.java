@@ -38,6 +38,7 @@ import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.Random;
+import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -100,6 +101,13 @@ public class StructureGenerator<S extends NBTStorable>
     private boolean memorize = true;
 
     private boolean partially;
+    private UUID diagnosticEntry;
+
+    StructureGenerator<S> diagnosticEntry(UUID entry)
+    {
+        diagnosticEntry = entry;
+        return this;
+    }
 
     public StructureGenerator(Structure<S> structure)
     {
@@ -128,6 +136,28 @@ public class StructureGenerator<S extends NBTStorable>
     @Nonnull
     public GenerationResult generate()
     {
+        RCGenerationDiagnostics diagnostics = RCGenerationDiagnostics.get();
+        if (!diagnostics.enabled()) return generateInternal();
+        RCGenerationDiagnostics.Scope scope = diagnostics.begin(world != null ? world : environment != null ? environment.world : null,
+                structureID(), generationType != null ? generationType.id() : generationInfoID, generateMaturity.name(),
+                boundingBox, generationBB, lowerCoord != null ? lowerCoord : surfacePos != null ? surfacePos.blockPos(0) : null,
+                diagnosticEntry);
+        try
+        {
+            GenerationResult result = generateInternal();
+            diagnostics.result(scope, result, null);
+            return result;
+        }
+        catch (RuntimeException | Error e)
+        {
+            diagnostics.result(scope, null, e);
+            throw e;
+        }
+        finally { diagnostics.end(scope); }
+    }
+
+    private GenerationResult generateInternal()
+    {
         Optional<S> optionalInstanceData;
 
         RCWorldgenMonitor.start("preparing " + structureID());
@@ -146,6 +176,7 @@ public class StructureGenerator<S extends NBTStorable>
 
         S instanceData = optionalInstanceData.get();
         StructureSpawnContext spawn = spawn().get();
+        RCGenerationDiagnostics.get().planned(spawn, seed);
         Structure<S> structure = structure();
         String structureID = structureID();
         boolean firstTime = spawn.generateMaturity.isFirstTime();
@@ -174,15 +205,20 @@ public class StructureGenerator<S extends NBTStorable>
                 MinecraftForge.EVENT_BUS.post(new StructureGenerationEventLite.Pre(world, structureID, boundingBox, spawn.generationLayer, firstTime));
         }
 
+        RCGenerationDiagnostics.Watch watch = RCGenerationDiagnostics.get().beforeWrite(spawn, seed,
+                firstTime ? "initial" : "completion");
+        boolean written = false;
         RCWorldgenMonitor.start("generating " + structureID());
         try {
             structure.generate(spawn, instanceData, foreignTransformer());
+            written = true;
         }
         catch (Exception e) {
             return failGenerate(new GenerationResult.Failure.Exception(e));
         }
         finally {
             RCWorldgenMonitor.stop();
+            RCGenerationDiagnostics.get().afterWrite(watch, written);
         }
 
         if (!firstTime)
@@ -227,7 +263,14 @@ public class StructureGenerator<S extends NBTStorable>
                     continue; // Skip those that we just generated in, especially the same chunk
 
                 RCWorldgenMonitor.start("pre-complementing " + structureID());
-                structure.generate(spawn().get(), instanceData, RCConfig.getUniversalTransformer());
+                StructureSpawnContext completionSpawn = spawn().get();
+                RCGenerationDiagnostics.Watch completionWatch = RCGenerationDiagnostics.get().beforeWrite(completionSpawn, seed, "pre-completion");
+                boolean completed = false;
+                try {
+                    structure.generate(completionSpawn, instanceData, RCConfig.getUniversalTransformer());
+                    completed = true;
+                }
+                finally { RCGenerationDiagnostics.get().afterWrite(completionWatch, completed); }
                 RCWorldgenMonitor.stop();
             }
             generationBB(oldBB);
@@ -463,6 +506,7 @@ public class StructureGenerator<S extends NBTStorable>
                     RCWorldgenMonitor.start("placing " + structureID());
                     int y = placer.place(place(), structure().blockCollection());
                     RCWorldgenMonitor.stop();
+                    RCGenerationDiagnostics.get().placement(y, placer, boundingBox);
 
                     if (y < 0) return Optional.empty();
                     boundingBox.minY += y;
