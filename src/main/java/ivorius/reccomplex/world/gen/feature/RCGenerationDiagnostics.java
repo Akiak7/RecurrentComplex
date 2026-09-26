@@ -4,6 +4,8 @@ import ivorius.reccomplex.RCConfig;
 import ivorius.reccomplex.RecurrentComplex;
 import ivorius.reccomplex.world.gen.feature.structure.context.StructureSpawnContext;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
@@ -16,9 +18,11 @@ import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.security.MessageDigest;
@@ -29,7 +33,7 @@ import java.util.function.Supplier;
 /** Temporary, opt-in worldgen observations. Never provides chunks or consults a worldgen RNG. */
 public final class RCGenerationDiagnostics
 {
-    static RCGenerationDiagnostics active = new RCGenerationDiagnostics(Settings.read(System.getProperties()),
+    static RCGenerationDiagnostics active = new RCGenerationDiagnostics(Settings.read(new Properties()),
             line -> RecurrentComplex.logger.info(line));
 
     public static RCGenerationDiagnostics get() { return active; }
@@ -37,6 +41,10 @@ public final class RCGenerationDiagnostics
     static final int MAX_WATCHES = 64, MAX_POINTS = 5, MAX_POSTS = 16, MAX_SAMPLES = 16;
     final Settings settings;
     private final Consumer<String> sink;
+    private File outputDirectory;
+    volatile RCGenerationDiagnosticFile file;
+    private final Map<EntityPlayer, Integer> playerIDs = new WeakHashMap<>();
+    private int nextPlayerID;
     private int records;
     private long nextID;
     private volatile boolean stopped;
@@ -52,36 +60,100 @@ public final class RCGenerationDiagnostics
         this.sink = sink;
     }
 
-    public boolean enabled() { return settings.enabled && !stopped; }
+    public static void configure(File configDirectory)
+    {
+        active = new RCGenerationDiagnostics(Settings.readFile(new File(configDirectory, "reccomplex-diagnostics.properties")),
+                line -> RecurrentComplex.logger.info(line));
+        active.outputDirectory = new File(configDirectory.getParentFile(), "diagnostics/recurrentcomplex");
+    }
+
+    public boolean enabled() { return settings.enabled && !stopped && (outputDirectory == null || file != null); }
     public boolean recording() { return enabled() && selected(current.get()); }
 
     public void register()
     {
         if (settings.error != null) emit("CONFIG_ERROR", settings.error);
-        if (enabled()) MinecraftForge.EVENT_BUS.register(this);
+        if (settings.enabled) MinecraftForge.EVENT_BUS.register(this);
+    }
+
+    public synchronized void startSession()
+    {
+        if (!settings.enabled || outputDirectory == null) return;
+        finishSession();
+        stopped = false;
+        try
+        {
+            file = new RCGenerationDiagnosticFile(outputDirectory.toPath());
+            file.metadata("DIAGNOSTIC_SETTINGS enabled=true dimension=" + (settings.allDimensions ? "all" : settings.dimension)
+                    + " area=" + (settings.allArea ? "all" : settings.area) + " structure=" + settings.structure
+                    + " watches=" + MAX_WATCHES + " pointsPerWatch=" + MAX_POINTS + " postsPerWatch=" + MAX_POSTS);
+            try (InputStream stream = getClass().getResourceAsStream("/diagnostic-build.properties"))
+            {
+                Properties build = new Properties();
+                if (stream != null) build.load(stream);
+                file.metadata("BUILD " + (stream == null ? "UNAVAILABLE" : build.toString()));
+            }
+            try { captureSettings(); }
+            catch (RuntimeException e) { file.metadata("SETTINGS_UNAVAILABLE " + e.getClass().getSimpleName()); }
+            file.startSaving();
+            RecurrentComplex.logger.info("RC diagnostics enabled: diagnostics/recurrentcomplex/{}", file.path.getFileName());
+        }
+        catch (Exception e)
+        {
+            RecurrentComplex.logger.error("RC diagnostics could not start ({})", e.getClass().getSimpleName());
+            finishSession();
+        }
+    }
+
+    public synchronized void finishSession()
+    {
+        RCGenerationDiagnosticFile previous = file;
+        file = null;
+        if (previous != null)
+        {
+            previous.close();
+            if (!"none".equals(previous.lastOutputError()))
+                RecurrentComplex.logger.error("RC diagnostic output problem: {}", previous.lastOutputError());
+        }
+        synchronized (this) { watches.clear(); dataWorlds.clear(); playerIDs.clear(); nextPlayerID = 0; }
+        current.remove(); populations.remove(); loadingWorld.remove();
     }
 
     // This is a diagnostic lock only; no worldgen or saved-data locks are acquired here.
     synchronized void emit(String event, String detail)
     {
+        Scope scope = current.get();
+        emit(scope == null ? null : scope.evidence, scope != null && scope.initial, event, detail);
+    }
+
+    private synchronized void emit(RCGenerationDiagnosticFile.Evidence evidence, boolean initial, String event, String detail)
+    {
         if (stopped) return;
         try
         {
+            if (file != null)
+            {
+                file.record(evidence, initial, event, "thread=" + Thread.currentThread().getId() + " " + detail);
+                return;
+            }
             if (records++ >= settings.maxRecords)
             {
                 sink.accept("[RC-DIAG] TRUNCATED record limit reached; further observations disabled until restart");
                 stopped = true;
                 return;
             }
-            sink.accept("[RC-DIAG] " + event + " thread=" + clean(Thread.currentThread().getName()) + " " + clean(detail));
+            sink.accept("[RC-DIAG] " + event + " thread=" + Thread.currentThread().getId() + " " + clean(detail));
         }
-        catch (RuntimeException ignored) { stopped = true; } // Logging must not abort generation.
+        catch (RuntimeException error)
+        {
+            stopped = true; // Logging must not abort generation.
+            if (file != null) file.metadata("CAPTURE_STOPPED reason=" + error.getClass().getSimpleName() + " later-evidence=unavailable");
+        }
     }
 
     private static String clean(Object value)
     {
-        String text = String.valueOf(value).replace('\n', ' ').replace('\r', ' ');
-        return text.length() > 3500 ? text.substring(0, 3500) + " [text truncated]" : text;
+        return RCGenerationDiagnosticFile.safe(value);
     }
 
     static String callers()
@@ -93,10 +165,11 @@ public final class RCGenerationDiagnostics
             String name = frame.getClassName();
             if (!name.equals(RCGenerationDiagnostics.class.getName())
                     && (name.startsWith("ivorius.reccomplex.") || name.startsWith("com.charles445.rltweaker.")
-                    || name.startsWith("com.pg85.otg.")))
+                    || name.startsWith("com.pg85.otg.") || name.startsWith("com.seibel.")
+                    || name.toLowerCase(Locale.ROOT).contains("pregen")))
             {
                 result.add(name + "." + frame.getMethodName());
-                if (++count == 14) break;
+                if (++count == 14) { result.add("[CALLER_LIMIT]"); break; }
             }
         }
         return result.toString();
@@ -108,12 +181,16 @@ public final class RCGenerationDiagnostics
         Scope scope = new Scope(current.get(), world, id);
         current.set(scope); // Even an excluded child must not attach its samples to its parent.
         StructureBoundingBox area = clip != null ? clip : bounds;
-        scope.selected = enabled() && world != null && settings.dimension == world.provider.getDimension()
-                && settings.idMatches(id) && (area != null ? settings.intersects(area)
-                : anchor != null && settings.contains(anchor.getX() >> 4, anchor.getZ() >> 4));
+        scope.selected = enabled() && world != null && settings.dimensionMatches(world.provider.getDimension())
+                && settings.idMatches(id) && (settings.allArea || (area != null ? settings.intersects(area)
+                : anchor != null && settings.contains(anchor.getX() >> 4, anchor.getZ() >> 4)));
         if (scope.selected)
         {
             synchronized (this) { scope.id = ++nextID; }
+            // Natural generation uses SUGGEST; like GenerateMaturity.isFirstTime(), only COMPLEMENT is a later pass.
+            scope.initial = !"COMPLEMENT".equals(stage);
+            RCGenerationDiagnosticFile output = file;
+            if (output != null) scope.evidence = output.begin(entry, scope.initial);
             emit("BEGIN", tag(scope) + " generation=" + generation + " stage=" + stage + " entry=" + entry
                     + " knownBounds=" + bounds + " clip=" + clip + " anchor=" + anchor
                     + " population=" + population() + " caller=" + callers());
@@ -126,12 +203,12 @@ public final class RCGenerationDiagnostics
     public void result(Scope scope, StructureGenerator.GenerationResult result, Throwable error)
     {
         if (!selected(scope)) return;
-        String outcome = error != null ? "threw " + error.getClass().getName() + ":" + error.getMessage()
+        String outcome = error != null ? "threw " + error.getClass().getName()
                 : result instanceof StructureGenerator.GenerationResult.Failure
                 ? "failure=" + ((StructureGenerator.GenerationResult.Failure) result).description
                 : "success=" + (result != null && result.succeeded());
         if (result instanceof StructureGenerator.GenerationResult.Failure.Exception)
-            outcome += " exception=" + ((StructureGenerator.GenerationResult.Failure.Exception) result).exception;
+            outcome += " exception=" + ((StructureGenerator.GenerationResult.Failure.Exception) result).exception.getClass().getName();
         emit("RESULT", tag(scope) + " " + outcome);
     }
 
@@ -189,8 +266,8 @@ public final class RCGenerationDiagnostics
             if (watches.size() >= MAX_WATCHES)
             {
                 Long oldest = watches.keySet().iterator().next();
-                watches.remove(oldest);
-                emit("WATCH_EVICTED", "watch=" + oldest + " coverage=lost");
+                Watch removed = watches.remove(oldest);
+                emit(removed.evidence, false, "WATCH_EVICTED", "watch=" + oldest + " coverage=lost");
             }
             if (!scope.points.isEmpty() && !"pre-completion".equals(stage)) watch.points.addAll(scope.points);
             else
@@ -223,13 +300,14 @@ public final class RCGenerationDiagnostics
     public void afterWrite(Watch watch, boolean succeeded)
     {
         if (watch == null || !enabled()) return;
-        emit("WRITE_RESULT", "watch=" + watch.id + " success=" + succeeded);
+        emit(watch.evidence, watch.initial, "WRITE_RESULT", "watch=" + watch.id + " success=" + succeeded);
         observe(watch, "after-write");
     }
 
     void observe(Watch watch, String phase)
     {
-        if (!enabled()) return;
+        RCGenerationDiagnosticFile output = file;
+        if (!enabled() || output != null && !output.retained(watch.evidence)) return;
         for (BlockPos point : watch.points)
         {
             if (!enabled()) return;
@@ -239,24 +317,27 @@ public final class RCGenerationDiagnostics
                 Chunk chunk = watch.world.getChunkProvider().getLoadedChunk(point.getX() >> 4, point.getZ() >> 4);
                 if (chunk == null)
                 {
-                    emit("SUPPORT", "watch=" + watch.id + " phase=" + phase + " pos=" + point + " UNAVAILABLE");
+                    emit(watch.evidence, watch.initial && !phase.startsWith("population"), "SUPPORT",
+                            "watch=" + watch.id + " phase=" + phase + " pos=" + point + " UNAVAILABLE");
                     continue;
                 }
                 StringJoiner states = new StringJoiner(",");
                 for (int y = Math.max(0, point.getY() - 4); y <= Math.min(255, point.getY() + 4); y++)
                     states.add(y + ":" + chunk.getBlockState(new BlockPos(point.getX(), y, point.getZ())));
-                emit("SUPPORT", "watch=" + watch.id + " phase=" + phase + " pos=" + point
+                emit(watch.evidence, watch.initial && !phase.startsWith("population"), "SUPPORT", "watch=" + watch.id + " phase=" + phase + " pos=" + point
                         + " terrainPopulated=" + chunk.isTerrainPopulated() + " window=" + states);
             }
-            catch (RuntimeException e) { emit("OBSERVATION_ERROR", "watch=" + watch.id + " phase=" + phase + " " + e); }
+            catch (RuntimeException e) { emit(watch.evidence, false, "OBSERVATION_ERROR", "watch=" + watch.id + " phase=" + phase + " " + e.getClass().getName()); }
         }
     }
 
     public void completionSkip(WorldServer world, WorldStructureGenerationData.StructureEntry entry, int x, int z, String reason)
     {
-        if (enabled() && world.provider.getDimension() == settings.dimension && settings.contains(x, z)
+        RCGenerationDiagnosticFile output = file;
+        if (enabled() && settings.dimensionMatches(world.provider.getDimension()) && settings.contains(x, z)
                 && settings.idMatches(entry.getStructureID()))
-            emit("COMPLETION_SKIP", "dim=" + settings.dimension + " chunk=" + x + "," + z + " " + entry(entry)
+            emit(output == null ? null : output.begin(entry.getUuid(), false), false, "COMPLETION_SKIP",
+                    "dim=" + world.provider.getDimension() + " chunk=" + x + "," + z + " " + entry(entry)
                     + " reason=" + reason + " caller=" + callers());
     }
 
@@ -277,7 +358,13 @@ public final class RCGenerationDiagnostics
     {
         World world = loadingWorld.get();
         if (world == null) world = dataWorlds.get(data);
-        return enabled() && world != null && !world.isRemote && world.provider.getDimension() == settings.dimension;
+        return enabled() && world != null && !world.isRemote && settings.dimensionMatches(world.provider.getDimension());
+    }
+
+    private synchronized String dimension(WorldStructureGenerationData data)
+    {
+        World world = loadingWorld.get() != null ? loadingWorld.get() : dataWorlds.get(data);
+        return world == null ? "unknown" : String.valueOf(world.provider.getDimension());
     }
 
     public void entryEvent(String event, WorldStructureGenerationData data, WorldStructureGenerationData.Entry entry)
@@ -287,7 +374,20 @@ public final class RCGenerationDiagnostics
         if (entry instanceof WorldStructureGenerationData.StructureEntry
                 && !settings.idMatches(((WorldStructureGenerationData.StructureEntry) entry).getStructureID())) return;
         if (!(entry instanceof WorldStructureGenerationData.StructureEntry) && !settings.structure.isEmpty()) return;
-        emit(event, "dim=" + settings.dimension + " " + entry(entry) + " trace=" + traceID()
+        Scope scope = current.get();
+        RCGenerationDiagnosticFile output = file;
+        RCGenerationDiagnosticFile.Evidence evidence = output == null ? null : output.find(entry.getUuid());
+        boolean initial = false;
+        if (evidence == null && event.equals("ENTRY_ADD") && selected(scope) && scope.initial
+                && entry instanceof WorldStructureGenerationData.StructureEntry
+                && Objects.equals(scope.structure, ((WorldStructureGenerationData.StructureEntry) entry).getStructureID()))
+        {
+            evidence = scope.evidence;
+            initial = true;
+            if (output != null) output.bind(evidence, entry.getUuid());
+        }
+        emit(evidence, initial, event, "dim=" + dimension(data)
+                + " " + entry(entry) + " trace=" + traceID() + (file != null && evidence == null ? " INITIAL_CONTEXT_UNAVAILABLE" : "")
                 + " caller=" + callers());
     }
 
@@ -295,7 +395,7 @@ public final class RCGenerationDiagnostics
     {
         if (!enabled()) return;
         if (!matches(data)) return;
-        emit(before ? "DATA_LOAD_BEGIN" : "DATA_LOAD_END", "dim=" + settings.dimension
+        emit(before ? "DATA_LOAD_BEGIN" : "DATA_LOAD_END", "dim=" + dimension(data)
                 + " entries=" + data.entryMap.size() + " checked=" + data.checkedChunks.size()
                 + " checkedFinal=" + data.checkedChunksFinal.size() + " entriesTag=" + nbt.hasKey("entries")
                 + " checkedTag=" + nbt.hasKey("checkedChunks") + " finalTag=" + nbt.hasKey("checkedChunksFinal")
@@ -310,8 +410,12 @@ public final class RCGenerationDiagnostics
     public void checked(WorldStructureGenerationData data, int x, int z, boolean finalPass, boolean added)
     {
         if (enabled() && settings.contains(x, z) && matches(data))
-            emit("CHUNK_CHECK", "dim=" + settings.dimension + " chunk=" + x + "," + z + " final=" + finalPass
+        {
+            RCGenerationDiagnosticFile output = file;
+            if (output != null && !recording()) { output.count(finalPass ? "checkedFinal" : "checked"); return; }
+            emit("CHUNK_CHECK", "dim=" + dimension(data) + " chunk=" + x + "," + z + " final=" + finalPass
                     + " newlyChecked=" + added + " caller=" + callers());
+        }
     }
 
     private static String entry(WorldStructureGenerationData.Entry entry)
@@ -330,29 +434,54 @@ public final class RCGenerationDiagnostics
     public void worldLoad(WorldEvent.Load event)
     {
         World world = event.getWorld();
-        if (!enabled() || world.isRemote || world.provider.getDimension() != settings.dimension) return;
-        emit("SESSION", "format=1 dim=" + settings.dimension + " area=" + settings.area + " structure=" + settings.structure
-                + " maxRecords=" + settings.maxRecords + " maxWatches=" + MAX_WATCHES + " maxPostsPerWatch=" + MAX_POSTS
-                + " java=" + System.getProperty("java.version"));
-        for (String id : Arrays.asList("reccomplex", "rltweaker", "openterraingenerator", "ivtoolkit", "forge"))
+        if (!enabled() || world.isRemote || !settings.dimensionMatches(world.provider.getDimension())) return;
+        metadata("WORLD", "dim=" + world.provider.getDimension() + " seed=" + world.getSeed()
+                + " provider=" + world.provider.getClass().getName() + " worldType=" + world.getWorldInfo().getTerrainType().getName()
+                + " mapFeatures=" + world.getWorldInfo().isMapFeaturesEnabled()
+                + " generatorOptions=" + clean(world.getWorldInfo().getGeneratorOptions()));
+    }
+
+    private void metadata(String event, String detail)
+    {
+        RCGenerationDiagnosticFile output = file;
+        if (output != null) output.metadata(event + " " + detail);
+        else emit(event, detail);
+    }
+
+    private void captureSettings()
+    {
+        metadata("SESSION", "java=" + System.getProperty("java.version") + " modVersion=" + RecurrentComplex.VERSION);
+        // All mod IDs/versions, but only relevant binaries are hashed. Never include mod source paths.
+        for (ModContainer mod : Loader.instance().getActiveModList())
         {
-            try
-            {
-                ModContainer mod = Loader.instance().getIndexedModList().get(id);
-                emit("MOD", id + (mod == null ? " absent" : " version=" + mod.getVersion() + " source=" + mod.getSource()
-                        + " sha256=" + sha256(mod.getSource())));
-            }
-            catch (Exception e) { emit("MOD", id + " unavailable=" + e); }
+            String id = mod.getModId();
+            String description = id + " version=" + mod.getVersion();
+            if (Arrays.asList("reccomplex", "rltweaker", "openterraingenerator", "ivtoolkit", "forge").contains(id)
+                    || id.toLowerCase(Locale.ROOT).contains("distant") || id.toLowerCase(Locale.ROOT).contains("pregen"))
+                try { description += " sha256=" + sha256(mod.getSource()); }
+                catch (Exception e) { description += " hashUnavailable=" + e.getClass().getSimpleName(); }
+            metadata("MOD", description);
         }
-        fields("RC", RCConfig.class, null);
+        fields("RC.effective", RCConfig.class, null);
+        // These categories contain generation options; deliberately exclude general command/account expressions.
+        if (RecurrentComplex.config != null)
+            for (String category : Arrays.asList("balancing", "decoration"))
+                for (Map.Entry<String, net.minecraftforge.common.config.Property> option : RecurrentComplex.config.getCategory(category).entrySet())
+                {
+                    net.minecraftforge.common.config.Property value = option.getValue();
+                    metadata("RC.config", category + "." + option.getKey() + "="
+                            + (value.isList() ? Arrays.toString(value.getStringList()) : value.getString()));
+                }
         try
         {
             Class<?> config = Class.forName("com.charles445.rltweaker.config.ModConfig", false, getClass().getClassLoader());
             Object server = config.getField("server").get(null);
             Object recurrent = server.getClass().getField("recurrentcomplex").get(server);
-            fields("RLTweaker.RC", recurrent.getClass(), recurrent);
+            fields("RLTweaker.RC.effective", recurrent.getClass(), recurrent);
         }
-        catch (Exception e) { emit("SETTINGS", "RLTweaker.RC unavailable=" + e); }
+        catch (Exception e) { metadata("SETTINGS", "RLTweaker.RC unavailable=" + e.getClass().getSimpleName()); }
+        metadata("COVERAGE", "Mod list identifies DH/pregeneration mods if present. Their full configs and OTG preset files are not collected."
+                + " Placement evidence records evaluated values, not copies of structure definitions. No live-pack validation implied.");
     }
 
     private void fields(String label, Class<?> type, Object instance)
@@ -361,9 +490,53 @@ public final class RCGenerationDiagnostics
         {
             if (instance == null && !Modifier.isStatic(field.getModifiers())) continue;
             if (!(field.getType().isPrimitive() || field.getType() == String.class)) continue;
-            try { emit("SETTINGS", label + "." + field.getName() + "=" + field.get(instance)); }
-            catch (Exception e) { emit("SETTINGS", label + "." + field.getName() + " unavailable=" + e); }
+            try { metadata("SETTINGS", label + "." + field.getName() + "=" + field.get(instance)); }
+            catch (Exception e) { metadata("SETTINGS", label + "." + field.getName() + " unavailable=" + e.getClass().getSimpleName()); }
         }
+    }
+
+    @SubscribeEvent
+    public void playerTick(TickEvent.PlayerTickEvent event)
+    {
+        if (!enabled() || file == null || event.side.isClient() || event.phase != TickEvent.Phase.END) return;
+        if (event.player.ticksExisted % 100 == 0) playerLocation(event.player, "periodic");
+    }
+
+    @SubscribeEvent
+    public void playerLogin(net.minecraftforge.fml.common.gameevent.PlayerEvent.PlayerLoggedInEvent event)
+    {
+        RCGenerationDiagnosticFile output = file;
+        if (!enabled() || output == null) return;
+        playerLocation(event.player, "login");
+        event.player.sendMessage(new net.minecraft.util.text.TextComponentString(
+                "RC diagnostics active. After quitting, send diagnostics/recurrentcomplex/" + output.path.getFileName()));
+    }
+
+    @SubscribeEvent
+    public void playerLogout(net.minecraftforge.fml.common.gameevent.PlayerEvent.PlayerLoggedOutEvent event)
+    {
+        if (enabled()) playerLocation(event.player, "logout");
+    }
+
+    private synchronized void playerLocation(EntityPlayer player, String phase)
+    {
+        if (file == null) return;
+        Integer id = playerIDs.get(player);
+        if (id == null)
+        {
+            if (playerIDs.size() >= 32) { file.count("untrackedPlayerObservations"); return; }
+            id = ++nextPlayerID;
+            playerIDs.put(player, id);
+        }
+        file.player("player-" + id, "phase=" + phase + " dim=" + player.dimension
+                + " xyz=" + player.posX + "," + player.posY + "," + player.posZ
+                + " yaw=" + player.rotationYaw + " pitch=" + player.rotationPitch);
+    }
+
+    public void stopping(MinecraftServer server)
+    {
+        if (!enabled() || file == null || server == null || server.getPlayerList() == null) return;
+        for (EntityPlayer player : server.getPlayerList().getPlayers()) playerLocation(player, "server-stopping");
     }
 
     private static String sha256(File file) throws Exception
@@ -383,19 +556,23 @@ public final class RCGenerationDiagnostics
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void populationPre(PopulateChunkEvent.Pre event)
     {
-        if (!enabled() || event.getWorld().isRemote || event.getWorld().provider.getDimension() != settings.dimension) return;
+        if (!enabled() || event.getWorld().isRemote || !settings.dimensionMatches(event.getWorld().provider.getDimension())) return;
         Deque<Population> stack = populations.get();
         if (stack.size() >= 32) { emit("POPULATION_DEPTH_LIMIT", "context reset; coverage incomplete"); stack.clear(); }
         stack.push(new Population(event.getWorld(), event.getChunkX(), event.getChunkZ()));
-        if (settings.contains(event.getChunkX(), event.getChunkZ()))
+        RCGenerationDiagnosticFile output = file;
+        if (output != null) output.count("populationPre");
+        else if (settings.contains(event.getChunkX(), event.getChunkZ()))
             emit("POP_PRE", "dim=" + settings.dimension + " population=" + population() + " depth=" + stack.size());
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void populationPost(PopulateChunkEvent.Post event)
     {
-        if (!enabled() || event.getWorld().isRemote || event.getWorld().provider.getDimension() != settings.dimension) return;
-        if (settings.contains(event.getChunkX(), event.getChunkZ()))
+        if (!enabled() || event.getWorld().isRemote || !settings.dimensionMatches(event.getWorld().provider.getDimension())) return;
+        RCGenerationDiagnosticFile output = file;
+        if (output != null) output.count("populationPost");
+        else if (settings.contains(event.getChunkX(), event.getChunkZ()))
             emit("POP_POST", "dim=" + settings.dimension + " chunk=" + event.getChunkX() + "," + event.getChunkZ());
         List<Watch> snapshot;
         synchronized (this) { snapshot = new ArrayList<>(watches.values()); }
@@ -410,7 +587,7 @@ public final class RCGenerationDiagnostics
                 if (expired) watches.remove(watch.id);
             }
             observe(watch, "population-end=" + event.getChunkX() + "," + event.getChunkZ() + " original=" + watch.population);
-            if (expired) emit("WATCH_EXPIRED", "watch=" + watch.id + " coverage=ended post-limit");
+            if (expired) emit(watch.evidence, false, "WATCH_EXPIRED", "watch=" + watch.id + " coverage=ended post-limit");
         }
         Deque<Population> stack = populations.get();
         Population top = stack.peek();
@@ -421,9 +598,11 @@ public final class RCGenerationDiagnostics
     @SubscribeEvent
     public synchronized void worldUnload(WorldEvent.Unload event)
     {
+        if (enabled() && !event.getWorld().isRemote && event.getWorld().playerEntities != null)
+            for (EntityPlayer player : event.getWorld().playerEntities) playerLocation(player, "world-unload");
         watches.values().removeIf(w -> {
             if (w.world != event.getWorld()) return false;
-            emit("WATCH_UNLOAD", "watch=" + w.id + " coverage=ended");
+            emit(w.evidence, false, "WATCH_UNLOAD", "watch=" + w.id + " coverage=ended");
             return true;
         });
         dataWorlds.values().removeIf(w -> w == event.getWorld());
@@ -432,7 +611,7 @@ public final class RCGenerationDiagnostics
 
     private boolean selected(Scope scope) { return enabled() && scope != null && scope.selected; }
     private String traceID() { Scope scope = current.get(); return scope == null ? "none" : String.valueOf(scope.id); }
-    private String tag(Scope scope) { return "trace=" + scope.id + " dim=" + settings.dimension + " structure=" + scope.structure; }
+    private String tag(Scope scope) { return "trace=" + scope.id + " dim=" + scope.world.provider.getDimension() + " structure=" + scope.structure; }
     private String population() { Population p = populations.get().peek(); return p == null ? "none" : p.x + "," + p.z; }
 
     public static final class Scope
@@ -442,7 +621,8 @@ public final class RCGenerationDiagnostics
         final String structure;
         final List<BlockPos> points = new ArrayList<>();
         final Set<Long> unavailable = new HashSet<>();
-        boolean selected;
+        boolean selected, initial;
+        RCGenerationDiagnosticFile.Evidence evidence;
         long id;
         int samples, details;
         Scope(Scope previous, WorldServer world, String structure) { this.previous = previous; this.world = world; this.structure = structure; }
@@ -453,9 +633,12 @@ public final class RCGenerationDiagnostics
         final long id;
         final WorldServer world;
         final String population;
+        final RCGenerationDiagnosticFile.Evidence evidence;
+        final boolean initial;
         final Set<BlockPos> points = new LinkedHashSet<>();
         int posts;
-        Watch(long id, Scope scope, String population) { this.id = id; this.world = scope.world; this.population = population; }
+        Watch(long id, Scope scope, String population)
+        { this.id = id; this.world = scope.world; this.population = population; this.evidence = scope.evidence; this.initial = scope.initial; }
         boolean relevant(int x, int z)
         {
             return points.stream().anyMatch(p -> Math.abs((long) (p.getX() >> 4) - x) <= 1 && Math.abs((long) (p.getZ() >> 4) - z) <= 1);
@@ -471,24 +654,46 @@ public final class RCGenerationDiagnostics
 
     static final class Settings
     {
-        boolean enabled;
+        boolean enabled, allArea, allDimensions;
         String area = "", structure = "", error;
         int dimension, minX, minZ, maxX, maxZ, maxRecords = 10000;
+        static Settings readFile(File file)
+        {
+            Properties p = new Properties();
+            if (!file.isFile()) return read(p);
+            try (InputStream stream = new FileInputStream(file))
+            {
+                if (file.length() > 16384) throw new IllegalArgumentException("diagnostic config too large");
+                p.load(stream);
+                return read(p);
+            }
+            catch (Exception e)
+            {
+                Settings s = new Settings();
+                s.error = "diagnostic config unreadable: " + e.getClass().getSimpleName();
+                return s;
+            }
+        }
         static Settings read(Properties properties)
         {
             Settings s = new Settings();
-            if (!Boolean.parseBoolean(properties.getProperty("reccomplex.trace", "false"))) return s;
+            if (!Boolean.parseBoolean(properties.getProperty("enabled", properties.getProperty("reccomplex.trace", "false")))) return s;
             try
             {
                 s.area = properties.getProperty("reccomplex.trace.area", "");
-                String[] parts = s.area.split(",");
-                if (parts.length != 4) throw new IllegalArgumentException("set reccomplex.trace.area=minChunkX,minChunkZ,maxChunkX,maxChunkZ");
-                s.minX = Integer.parseInt(parts[0]); s.minZ = Integer.parseInt(parts[1]);
-                s.maxX = Integer.parseInt(parts[2]); s.maxZ = Integer.parseInt(parts[3]);
-                if (s.maxX < s.minX || s.maxZ < s.minZ || (long) s.maxX - s.minX >= 64 || (long) s.maxZ - s.minZ >= 64
-                        || Math.abs((long) s.minX) > 1874999 || Math.abs((long) s.maxX) > 1874999
-                        || Math.abs((long) s.minZ) > 1874999 || Math.abs((long) s.maxZ) > 1874999)
-                    throw new IllegalArgumentException("area must be within world bounds and at most 64x64 chunks");
+                s.allArea = s.area.isEmpty();
+                if (!s.allArea)
+                {
+                    String[] parts = s.area.split(",");
+                    if (parts.length != 4) throw new IllegalArgumentException("set reccomplex.trace.area=minChunkX,minChunkZ,maxChunkX,maxChunkZ");
+                    s.minX = Integer.parseInt(parts[0]); s.minZ = Integer.parseInt(parts[1]);
+                    s.maxX = Integer.parseInt(parts[2]); s.maxZ = Integer.parseInt(parts[3]);
+                    if (s.maxX < s.minX || s.maxZ < s.minZ || (long) s.maxX - s.minX >= 64 || (long) s.maxZ - s.minZ >= 64
+                            || Math.abs((long) s.minX) > 1874999 || Math.abs((long) s.maxX) > 1874999
+                            || Math.abs((long) s.minZ) > 1874999 || Math.abs((long) s.maxZ) > 1874999)
+                        throw new IllegalArgumentException("area must be within world bounds and at most 64x64 chunks");
+                }
+                s.allDimensions = !properties.containsKey("reccomplex.trace.dimension");
                 s.dimension = Integer.parseInt(properties.getProperty("reccomplex.trace.dimension", "0"));
                 s.structure = properties.getProperty("reccomplex.trace.structure", "");
                 s.maxRecords = Math.max(1, Math.min(50000, Integer.parseInt(properties.getProperty("reccomplex.trace.maxRecords", "10000"))));
@@ -498,10 +703,11 @@ public final class RCGenerationDiagnostics
             return s;
         }
         boolean idMatches(String id) { return structure.isEmpty() || structure.equals(id); }
-        boolean contains(int x, int z) { return x >= minX && x <= maxX && z >= minZ && z <= maxZ; }
+        boolean dimensionMatches(int id) { return allDimensions || id == dimension; }
+        boolean contains(int x, int z) { return allArea || x >= minX && x <= maxX && z >= minZ && z <= maxZ; }
         boolean intersects(StructureBoundingBox box)
         {
-            return box != null && (box.maxX >> 4) >= minX && (box.minX >> 4) <= maxX
+            return allArea || box != null && (box.maxX >> 4) >= minX && (box.minX >> 4) <= maxX
                     && (box.maxZ >> 4) >= minZ && (box.minZ >> 4) <= maxZ;
         }
     }

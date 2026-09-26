@@ -22,6 +22,34 @@ version = "2.0.1.1"
 group = "ivorius.reccomplex" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
 archivesBaseName = "RecurrentComplexVolts-1.12.2"
 
+// Build identity travels inside the diagnostic artifact, so testers need not collect a separate build report.
+processResources {
+    outputs.upToDateWhen { false }
+    doLast {
+        def readGit = { arguments ->
+            def output = new ByteArrayOutputStream()
+            try {
+                def result = exec {
+                    commandLine(['git'] + arguments)
+                    standardOutput = output
+                    errorOutput = new ByteArrayOutputStream()
+                    ignoreExitValue = true
+                }
+                return result.exitValue == 0 ? output.toString('UTF-8').trim() : 'unavailable'
+            } catch (Exception ignored) { return 'unavailable' }
+        }
+        def revision = readGit(['rev-parse', 'HEAD'])
+        def status = readGit(['status', '--porcelain'])
+        def identity = new Properties()
+        identity.setProperty('diagnosticBuild', 'dregora-diag2')
+        identity.setProperty('sourceRevision', revision)
+        identity.setProperty('sourceDirty', status == 'unavailable' ? 'unknown' : Boolean.toString(!status.isEmpty()))
+        identity.setProperty('modVersion', project.version.toString())
+        identity.setProperty('coordinateFixRevision', '7379fd31')
+        file("${destinationDir}/diagnostic-build.properties").withOutputStream { identity.store(it, 'Diagnostic build identity') }
+    }
+}
+
 sourceCompatibility = targetCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8' // Need this here so eclipse task generates correctly.
 
 minecraft {

@@ -1,6 +1,6 @@
 **Dregora compatibility investigation — 22 September 2026**
 
-Implementation follow-up: the proposed diagnostics below are now available in a test build. See the [tester guide](dregora-diagnostic-tester-guide.md) and [validation notes](dregora-diagnostic-notes.md). The source findings below remain the basis for the comparison; no live Dregora fix has been established.
+Implementation follow-up: diagnostic build 2 now uses a single fresh-world run with automatic capture. The historical comparison below is not required of the tester. See the [tester guide](dregora-diagnostic-tester-guide.md) and [validation notes](dregora-diagnostic-notes.md). The source findings below remain the basis for the comparison; no live Dregora fix has been established.
 
 The reported cutoff improvement with partial generation ON is consistent with restoring native Volts generation. It does not explain why the earlier integration-disabled run had cutoffs: that run should also use the native handler. No Dregora fix has been demonstrated. Floating heights remain a separate investigation.
 

@@ -139,6 +139,7 @@ public class RecurrentComplex
 
         forgeEventHandler = new RCForgeEventHandler();
         forgeEventHandler.register();
+        RCGenerationDiagnostics.configure(event.getModConfigurationDirectory());
         RCGenerationDiagnostics.get().register();
         terrainEventHandler = new RCTerrainGenEventHandler();
         terrainEventHandler.register();
@@ -170,6 +171,24 @@ public class RecurrentComplex
         ResourceDirectory.tryReload(loader, LeveledRegistry.Level.CUSTOM);
 
         SchematicLoader.initializeFolder();
+    }
+
+    @EventHandler
+    public void diagnosticServerStarting(FMLServerAboutToStartEvent event)
+    {
+        RCGenerationDiagnostics.get().startSession();
+    }
+
+    @EventHandler
+    public void diagnosticServerStopping(FMLServerStoppingEvent event)
+    {
+        RCGenerationDiagnostics.get().stopping(net.minecraftforge.fml.common.FMLCommonHandler.instance().getMinecraftServerInstance());
+    }
+
+    @EventHandler
+    public void diagnosticServerStopped(FMLServerStoppedEvent event)
+    {
+        RCGenerationDiagnostics.get().finishSession();
     }
 
     @EventHandler

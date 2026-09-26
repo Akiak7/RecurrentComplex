@@ -27,12 +27,15 @@ import net.minecraft.world.storage.MapStorage;
 import net.minecraftforge.event.terraingen.PopulateChunkEvent;
 import net.minecraftforge.event.world.WorldEvent;
 import org.junit.*;
+import org.junit.rules.TemporaryFolder;
 import org.apache.logging.log4j.Logger;
 import com.charles445.rltweaker.handler.DiagnosticCallerFixture;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.lang.reflect.Field;
+import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -40,6 +43,7 @@ import static org.mockito.Mockito.*;
 
 public class RCGenerationDiagnosticsTest
 {
+    @Rule public TemporaryFolder temp = new TemporaryFolder();
     private RCGenerationDiagnostics previous;
     private RCGenerationDiagnostics diagnostics;
     private List<String> log;
@@ -70,6 +74,7 @@ public class RCGenerationDiagnosticsTest
     @After
     public void restore()
     {
+        if (diagnostics.file != null) diagnostics.finishSession();
         RCGenerationDiagnostics.active = previous;
         RecurrentComplex.logger = previousLogger;
     }
@@ -80,7 +85,7 @@ public class RCGenerationDiagnosticsTest
         assertFalse(RCGenerationDiagnostics.Settings.read(new Properties()).enabled);
         Properties p = new Properties();
         p.setProperty("reccomplex.trace", "true");
-        assertNotNull(RCGenerationDiagnostics.Settings.read(p).error);
+        assertTrue(RCGenerationDiagnostics.Settings.read(p).enabled);
         p.setProperty("reccomplex.trace.area", "0,0,64,0");
         assertFalse(RCGenerationDiagnostics.Settings.read(p).enabled);
         p.setProperty("reccomplex.trace.area", "-2,-2,1,1");
@@ -320,7 +325,7 @@ public class RCGenerationDiagnosticsTest
                 .instanceData(instance).boundingBox(bounds()).maturity(StructureSpawnContext.GenerateMaturity.COMPLEMENT)
                 .transformer(new RunTransformer(mock(TransformerMulti.class), null));
         assertFalse(generator.generate().succeeded());
-        assertTrue(log.stream().anyMatch(l -> l.contains("RESULT") && l.contains("fixture-write-failure")));
+        assertTrue(log.stream().anyMatch(l -> l.contains("RESULT") && l.contains("IllegalStateException")));
         assertTrue(log.stream().anyMatch(l -> l.contains("WRITE_RESULT") && l.contains("success=false")));
         WorldStructureGenerationData.StructureEntry entry = WorldStructureGenerationData.StructureEntry.complete(
                 "tower", "natural", bounds(), AxisAlignedTransform2D.R0, false);
@@ -329,11 +334,112 @@ public class RCGenerationDiagnosticsTest
         assertEquals(3, count("COMPLETION_SKIP"));
     }
 
+    @Test
+    public void fileCaptureCorrelatesInitialPlacementCompletionCleanupAndLaterSupport() throws Exception
+    {
+        diagnostics.file = new RCGenerationDiagnosticFile(temp.getRoot().toPath());
+        WorldStructureGenerationData data = new WorldStructureGenerationData();
+        diagnostics.data(world, () -> data);
+        WorldStructureGenerationData.StructureEntry entry = WorldStructureGenerationData.StructureEntry.complete(
+                "tower", "natural", bounds(), AxisAlignedTransform2D.R0, false);
+        // SUGGEST is the native natural-generation stage, despite its name; it must retain initial evidence.
+        RCGenerationDiagnostics.Scope first = diagnostics.begin(world, "tower", "natural", "SUGGEST",
+                bounds(), null, null, null);
+        diagnostics.planned(spawn(), 123L);
+        diagnostics.sample("ground", new BlockPos(2, 60, 3), "hit", true);
+        RCGenerationDiagnostics.Watch firstWatch = diagnostics.beforeWrite(spawn(), 123L, "initial");
+        diagnostics.afterWrite(firstWatch, true);
+        data.addEntry(entry);
+        diagnostics.end(first);
+        RCGenerationDiagnostics.Scope completion = diagnostics.begin(world, "tower", "natural", "COMPLEMENT",
+                bounds(), bounds(), null, entry.getUuid());
+        assertSame(first.evidence, completion.evidence);
+        diagnostics.beforeWrite(spawn(), 123L, "completion");
+        diagnostics.end(completion);
+        RCGenerationDiagnostics.Scope unrelated = begin("other", bounds());
+        DiagnosticCallerFixture.cleanup(data, entry.getUuid());
+        diagnostics.end(unrelated);
+        diagnostics.populationPre(new PopulateChunkEvent.Pre(null, world, mock(Random.class), 0, 0, false));
+        diagnostics.populationPost(new PopulateChunkEvent.Post(null, world, mock(Random.class), 0, 0, false));
+        diagnostics.file.save();
+        Map<String, String> zip = RCGenerationDiagnosticFileTest.read(diagnostics.file.path);
+        String tower = zip.get("structures/context-1.txt");
+        assertTrue(tower.contains("chosenY=61"));
+        assertTrue(tower.contains("INITIAL_CONTEXT captured-in-this-session"));
+        assertTrue(tower.contains("RESERVED_INITIAL_SUMMARY\n") && tower.contains("stage=SUGGEST"));
+        assertTrue(tower.contains("stage=initial"));
+        assertTrue(tower.contains("stage=completion"));
+        assertTrue(tower.contains("ENTRY_ADD"));
+        assertTrue(tower.contains("DiagnosticCallerFixture.cleanup"));
+        assertTrue(tower.contains("phase=population-end=0,0"));
+        assertFalse(zip.get("structures/context-2.txt").contains("ENTRY_REMOVE"));
+        assertTrue(log.isEmpty()); // File mode does not flood latest.log.
+        verify(provider, atLeastOnce()).getLoadedChunk(anyInt(), anyInt());
+        verifyNoMoreInteractions(provider);
+    }
+
+    @Test
+    public void evictedContextStopsTerrainReadsAndAnonymousPlayerLocationNeedsNoTerrain() throws Exception
+    {
+        diagnostics.file = new RCGenerationDiagnosticFile(temp.getRoot().toPath(), 1, 4000, 4000);
+        RCGenerationDiagnostics.Scope first = begin("tower", bounds());
+        RCGenerationDiagnostics.Watch watch = diagnostics.beforeWrite(spawn(), 3L, "initial");
+        diagnostics.end(first);
+        diagnostics.end(begin("other", bounds()));
+        clearInvocations(provider, world);
+        diagnostics.observe(watch, "after-eviction");
+        verifyZeroInteractions(provider, world);
+        net.minecraft.entity.player.EntityPlayer player = mock(net.minecraft.entity.player.EntityPlayer.class);
+        player.dimension = 0; player.posX = 123; player.posY = 70; player.posZ = -321;
+        diagnostics.playerLogout(new net.minecraftforge.fml.common.gameevent.PlayerEvent.PlayerLoggedOutEvent(player));
+        diagnostics.file.save();
+        String report = RCGenerationDiagnosticFileTest.read(diagnostics.file.path).get("session.txt");
+        assertTrue(report.contains("player-1"));
+        assertTrue(report.contains("xyz=123.0,70.0,-321.0"));
+        verifyZeroInteractions(player, provider, world); // No name, profile, UUID or block lookup.
+    }
+
+    @Test
+    public void lifecycleActivationCreatesSeparateFinalArtifactsWithoutJvmArguments() throws Exception
+    {
+        Path config = temp.getRoot().toPath().resolve("config");
+        Files.createDirectory(config);
+        RCGenerationDiagnostics.configure(config.toFile());
+        diagnostics = RCGenerationDiagnostics.get();
+        diagnostics.startSession();
+        assertFalse(Files.exists(temp.getRoot().toPath().resolve("diagnostics")));
+        Files.write(config.resolve("reccomplex-diagnostics.properties"), "enabled=true\n".getBytes(StandardCharsets.UTF_8));
+        RCGenerationDiagnostics.configure(config.toFile());
+        diagnostics = RCGenerationDiagnostics.get();
+        diagnostics.startSession();
+        assertTrue(diagnostics.enabled());
+        Path first = diagnostics.file.path;
+        diagnostics.emit("TEST", "first-session");
+        diagnostics.finishSession();
+        assertFalse(diagnostics.enabled());
+        Map<String, String> report = RCGenerationDiagnosticFileTest.read(first);
+        assertTrue(report.get("session.txt").contains("sessionClosed=true"));
+        assertTrue(report.get("session.txt").contains("BUILD"));
+        assertTrue(report.get("session.txt").contains("RC.effective.rayAverageMaxHeightSpread=" + RCConfig.rayAverageMaxHeightSpread));
+        assertTrue(report.get("session.txt").contains("RLTweaker.RC.effective.cleanStructureData=true"));
+        assertTrue(report.get("session.txt").contains("RLTweaker.RC.effective.generatePartially=false"));
+        assertTrue(com.charles445.rltweaker.config.ModConfig.server.recurrentcomplex.cleanStructureData);
+        assertFalse(com.charles445.rltweaker.config.ModConfig.server.recurrentcomplex.generatePartially);
+        assertTrue(report.get("session.txt").contains("dimension=all area=all"));
+        assertTrue(report.get("recent-events.txt").contains("first-session"));
+        byte[] original = Files.readAllBytes(first);
+        diagnostics.startSession();
+        assertNotEquals(first, diagnostics.file.path);
+        diagnostics.finishSession();
+        assertArrayEquals(original, Files.readAllBytes(first));
+    }
+
     private void install(boolean enabled, int cap)
     {
         Properties p = new Properties();
         p.setProperty("reccomplex.trace", String.valueOf(enabled));
         p.setProperty("reccomplex.trace.area", "-2,-2,2,2");
+        p.setProperty("reccomplex.trace.dimension", "0");
         p.setProperty("reccomplex.trace.maxRecords", String.valueOf(cap));
         diagnostics = new RCGenerationDiagnostics(RCGenerationDiagnostics.Settings.read(p), log::add);
         RCGenerationDiagnostics.active = diagnostics;
