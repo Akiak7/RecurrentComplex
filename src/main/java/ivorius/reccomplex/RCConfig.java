@@ -151,9 +151,13 @@ public class RCConfig
             ConfigUtil.parseMap(config.getStringList(OPTION_SPAWN_TWEAKS, CATEGORY_BALANCING, new String[0], "List of spawn chance tweaks to structures: IceThorn:0.5"),
                     null, Function.identity(), "spawn tweak float", Floats::tryParse, spawnTweaks::put);
 
-            structureLoadMatcher.setExpression(config.getString("structureLoadMatcher", CATEGORY_BALANCING, "", "Resource Expression that will be applied to each loading structure, determining if it should be loaded."));
+            structureLoadMatcher.setExpression(config.getString("structureLoadMatcher", CATEGORY_BALANCING, "", "Resource expression determining which structures are loaded. Matches structure IDs and resource domains, not dimensions.\n"
+                    + "Here, id=0 means a structure named '0', and $reccomplex matches the reccomplex resource domain.\n"
+                    + "For dimension rules shared by a group of structures, use a dimension preset (see universalDimensionMatcher below)."));
             ConfigUtil.logExpressionException(structureLoadMatcher, "structureLoadMatcher", RecurrentComplex.logger);
-            structureGenerationMatcher.setExpression(config.getString("structureGenerationMatcher", CATEGORY_BALANCING, "", "Resource Expression that will be applied to each loading structure, determining if it should be set to 'active'."));
+            structureGenerationMatcher.setExpression(config.getString("structureGenerationMatcher", CATEGORY_BALANCING, "", "Resource expression determining which loaded structures are set to 'active'. Matches structure IDs and resource domains, not dimensions.\n"
+                    + "Here, id=0 means a structure named '0', and $reccomplex matches the reccomplex resource domain.\n"
+                    + "For dimension rules shared by a group of structures, use a dimension preset (see universalDimensionMatcher below)."));
             ConfigUtil.logExpressionException(structureGenerationMatcher, "structureGenerationMatcher", RecurrentComplex.logger);
 
             inventoryGeneratorLoadMatcher.setExpression(config.getString("inventoryGeneratorLoadMatcher", CATEGORY_BALANCING, "", "Resource Expression that will be applied to each loading loot table, determining if it should be loaded."));
@@ -166,10 +170,16 @@ public class RCConfig
             biomeWhitelist = SimpleEnvironmentMatcher.biomes(config.getStringList("biomeWhitelist", CATEGORY_BALANCING, new String[0], "Recommended for simple biome allow rules. Empty means all biomes are allowed unless blocked. Examples: minecraft:plains, plains, type=FOREST. This is combined with universalBiomeMatcher if that advanced expression is set."), RCConfig::warnConfig);
             biomeBlocklist = SimpleEnvironmentMatcher.biomes(config.getStringList("biomeBlocklist", CATEGORY_BALANCING, new String[0], "Recommended for simple biome deny rules. Blocklist wins over whitelist. Examples: minecraft:ocean, ocean, type=WATER. This is combined with universalBiomeMatcher if that advanced expression is set."), RCConfig::warnConfig);
 
-            universalDimensionExpression.setExpression(config.getString("universalDimensionMatcher", CATEGORY_BALANCING, "", "Advanced dimension expression checked for every structure. Most users should use dimensionWhitelist and dimensionBlocklist instead. Use this only for complex expression logic. This is combined with the simple dimension lists."));
+            universalDimensionExpression.setExpression(config.getString("universalDimensionMatcher", CATEGORY_BALANCING, "", "Advanced dimension expression checked for every structure, including custom structures. Matches dimensions, not structure IDs or resource domains.\n"
+                    + "Here, id=0 means dimension 0, and $HELL matches a dimension dictionary type.\n"
+                    + "For simple global restrictions, use dimensionWhitelist and dimensionBlocklist. These lists are combined with this expression.\n"
+                    + "For rules shared by a group of structures, override or create a dimension preset (.rcdp) in the game directory's structures/active/ folder.\n"
+                    + "For example, overworld.rcdp overrides the shared Overworld preset, whose default includes compatible non-vanilla dimensions, not just dimension 0.\n"
+                    + "A preset override affects every structure referencing it, including custom structures; it does not target a resource domain.\n"
+                    + "To use separate rules for a custom structure, select its own preset or Custom dimension settings in the structure editor. Restart or run /#reload CUSTOM after editing preset files."));
             ConfigUtil.logExpressionException(universalDimensionExpression, "universalDimensionMatcher", RecurrentComplex.logger);
-            dimensionWhitelist = SimpleEnvironmentMatcher.dimensions(config.getStringList("dimensionWhitelist", CATEGORY_BALANCING, new String[0], "Recommended for simple dimension allow rules. Empty means all dimensions are allowed unless blocked. Examples: 0, id=-1, type=EARTH. This is combined with universalDimensionMatcher if that advanced expression is set."), RCConfig::warnConfig);
-            dimensionBlocklist = SimpleEnvironmentMatcher.dimensions(config.getStringList("dimensionBlocklist", CATEGORY_BALANCING, new String[0], "Recommended for simple dimension deny rules. Blocklist wins over whitelist. Examples: -1, type=HELL, ENDER. This is combined with universalDimensionMatcher if that advanced expression is set."), RCConfig::warnConfig);
+            dimensionWhitelist = SimpleEnvironmentMatcher.dimensions(config.getStringList("dimensionWhitelist", CATEGORY_BALANCING, new String[0], "Recommended for simple dimension allow rules, including for custom structures. Empty means all dimensions are allowed unless blocked. Examples: 0, id=-1, type=EARTH. This is combined with universalDimensionMatcher if that advanced expression is set."), RCConfig::warnConfig);
+            dimensionBlocklist = SimpleEnvironmentMatcher.dimensions(config.getStringList("dimensionBlocklist", CATEGORY_BALANCING, new String[0], "Recommended for simple dimension deny rules, including for custom structures. Blocklist wins over whitelist. Examples: -1, type=HELL, ENDER. This is combined with universalDimensionMatcher if that advanced expression is set."), RCConfig::warnConfig);
 
             failingStructureLogExpression.setExpression(config.getString("failingStructureLogExpression", CATEGORY_BALANCING, "", "Resource Expression that will restrict logging of structures that fail to generate."));
             ConfigUtil.logExpressionException(failingStructureLogExpression, "failingStructureLogExpression", RecurrentComplex.logger);
