@@ -286,7 +286,8 @@ public class WorldScriptStructureGenerator implements WorldScript<WorldScriptStr
     {
         StructureGenerator<T> generator = new StructureGenerator<>(structure).structureID(instanceData.structureID).asChild(context).generationInfo(generationInfo)
                 .lowerCoord(instanceData.lowerCoord).transform(instanceData.structureTransform);
-        structureData.load(generator);
+        // Attach the prepared (or serialized) layout on every clipped pass; load() alone leaves cached data unattached.
+        structureData.register(generator);
         return generator.generate();
     }
 
