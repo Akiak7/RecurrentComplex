@@ -223,7 +223,7 @@ public class TransformerRuins extends Transformer<TransformerRuins.InstanceData>
             StructureBoundingBox dropAreaBB = context.boundingBox;
             RecurrentComplex.forgeEventHandler.disabledTileDropAreas.add(dropAreaBB);
 
-            if (blockErosion > 0.0f || vineGrowth > 0.0f)
+            if (blockErosion > 0.0f || vineGrowth > 0.0f || cobwebGrowth > 0.0f)
             {
                 // Only place things on sides we KNOW we have generated already.
                 StructureBoundingBox relevantBB = context.generationBB != null ? Structures.intersection(context.boundingBox, context.generationBB) : context.boundingBox;
