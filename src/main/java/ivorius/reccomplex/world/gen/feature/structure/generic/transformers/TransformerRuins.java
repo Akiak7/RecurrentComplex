@@ -43,6 +43,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
+import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.gen.structure.StructureBoundingBox;
 import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.fml.relauncher.Side;
@@ -148,6 +149,12 @@ public class TransformerRuins extends Transformer<TransformerRuins.InstanceData>
     @Override
     public boolean skipGeneration(InstanceData instanceData, StructureLiveContext context, BlockPos pos, IBlockState state, IvWorldData worldData, BlockPos sourcePos)
     {
+        return isRemovedByRuins(instanceData, worldData, sourcePos, state)
+                || skipUnsupportedWallSign(instanceData, context, pos, state, worldData, sourcePos);
+    }
+
+    private boolean isRemovedByRuins(InstanceData instanceData, IvWorldData worldData, BlockPos sourcePos, IBlockState state)
+    {
         if (instanceData.fallingBlocks.contains(sourcePos))
             return true;
 
@@ -159,6 +166,48 @@ public class TransformerRuins extends Transformer<TransformerRuins.InstanceData>
             return true;
 
         return getStability(worldData, sourcePos) < decay;
+    }
+
+    private boolean skipUnsupportedWallSign(InstanceData instanceData, StructureLiveContext context, BlockPos pos,
+                                            IBlockState state, IvWorldData worldData, BlockPos sourcePos)
+    {
+        // Only omit a new vanilla wall sign during spawning. Preparation must stay independent
+        // of terrain, and pending falls could still supply backing after blocks are placed.
+        if (state.getBlock() != Blocks.WALL_SIGN || !(context instanceof StructureSpawnContext)
+                || !instanceData.fallingBlocks.isEmpty())
+            return false;
+
+        IvBlockCollection collection = worldData.blockCollection;
+        BlockArea sourceArea = collection.area();
+        if (!sourceArea.contains(sourcePos))
+            return false;
+
+        IBlockState sourceSign = collection.getBlockState(sourcePos);
+        if (sourceSign.getBlock() != Blocks.WALL_SIGN)
+            return false;
+
+        BlockPos sourceBacking = sourcePos.offset(sourceSign.getValue(BlockWallSign.FACING).getOpposite());
+        if (!sourceArea.contains(sourceBacking))
+            return false;
+
+        IBlockState backing = collection.getBlockState(sourceBacking);
+        // Use the same solid-material rule as BlockWallSign.neighborChanged. Preserve source
+        // designs without backing, and supports omitted by something other than this Ruins instance.
+        if (!backing.getMaterial().isSolid() || !isRemovedByRuins(instanceData, worldData, sourceBacking, backing))
+            return false;
+
+        BlockPos backingPos = context.transform.apply(sourceBacking,
+                new int[]{collection.width, collection.height, collection.length}).add(context.lowerCoord());
+        StructureSpawnContext spawn = (StructureSpawnContext) context;
+        // Do not guess about other chunk passes, generation predicates or a changed attachment.
+        if (!spawn.includes(pos) || !spawn.includes(backingPos)
+                || !backingPos.equals(pos.offset(state.getValue(BlockWallSign.FACING).getOpposite())))
+            return false;
+
+        // Skipping a source block may leave valid terrain backing in place. Observe only a
+        // loaded chunk; an unavailable backing is uncertain, not evidence of missing support.
+        Chunk chunk = context.environment.world.getChunkProvider().getLoadedChunk(backingPos.getX() >> 4, backingPos.getZ() >> 4);
+        return chunk != null && !chunk.getBlockState(backingPos).getMaterial().isSolid();
     }
 
     public double getDecay(InstanceData instanceData, BlockPos sourcePos, IBlockState state)

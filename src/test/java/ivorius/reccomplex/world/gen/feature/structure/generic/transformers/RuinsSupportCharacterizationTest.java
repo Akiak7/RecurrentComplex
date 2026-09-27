@@ -19,6 +19,8 @@ import net.minecraft.init.Bootstrap;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.WorldServer;
+import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.gen.ChunkProviderServer;
 import net.minecraft.world.gen.structure.StructureBoundingBox;
 import org.junit.*;
 
@@ -28,7 +30,7 @@ import java.lang.reflect.Field;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
-/** Characterizes current behaviour, not a proposed support-cleanup implementation. */
+/** Retains the original reproducer and checks the conservative wall-sign omission. */
 public class RuinsSupportCharacterizationTest
 {
     private static final BlockPos SUPPORT = new BlockPos(1, 2, 2);
@@ -73,7 +75,7 @@ public class RuinsSupportCharacterizationTest
         {
             long seed = findSeed(torch);
             assertEquals(torch ? 409 : 289, seed);
-            Fixture f = new Fixture(torch, true, true, true, AxisAlignedTransform2D.R0);
+            Fixture f = new Fixture(torch, true, true, true, AxisAlignedTransform2D.R0, true, true);
             f.prepare(seed, false);
             assertTrue(f.skips(SUPPORT));
             assertFalse(f.skips(DECORATION));
@@ -105,7 +107,7 @@ public class RuinsSupportCharacterizationTest
                     assertFalse(f.skips(DECORATION));
                     f.generate(order);
                     assertEquals(f.label(order, restore), Blocks.AIR, f.state(f.worldPos(SUPPORT)).getBlock());
-                    assertEquals(f.label(order, restore), torch ? Blocks.AIR : Blocks.WALL_SIGN, f.state(f.worldPos(DECORATION)).getBlock());
+                    assertEquals(f.label(order, restore), torch || order == 0 ? Blocks.AIR : Blocks.WALL_SIGN, f.state(f.worldPos(DECORATION)).getBlock());
                 }
         }
     }
@@ -168,9 +170,143 @@ public class RuinsSupportCharacterizationTest
         }
     }
 
+    @Test public void sameChunkInitialAndCompletionPassesOmitOnlyTheRuinedSign()
+    {
+        for (int rotation = 0; rotation < 4; rotation++) for (boolean mirror : new boolean[]{false, true})
+            for (boolean restore : new boolean[]{false, true}) for (boolean completion : new boolean[]{false, true})
+            {
+                Fixture f = new Fixture(false, true, true, true, AxisAlignedTransform2D.from(rotation, mirror), false, false);
+                f.prepare(289, restore);
+                f.structure.generate(f.context(f.chunk(f.worldPos(DECORATION)), completion), f.instance, f.foreign);
+                assertEquals(Blocks.AIR, f.state(f.worldPos(DECORATION)).getBlock());
+                assertEquals(Blocks.PLANKS, f.state(f.worldPos(ALTERNATIVE)).getBlock());
+                assertFalse(f.trace.stream().anyMatch(t -> t.startsWith("write ") && t.contains("minecraft:wall_sign")));
+                assertEquals(0, f.generationDraws);
+            }
+    }
+
+    @Test public void unavailableBackingChunkLeavesSignAlone()
+    {
+        Fixture f = new Fixture(false, true, false, true, AxisAlignedTransform2D.R0);
+        f.prepare(289, true);
+        f.backingAvailable = false;
+        f.generate(0);
+        assertEquals(Blocks.WALL_SIGN, f.state(f.worldPos(DECORATION)).getBlock());
+        assertTrue(f.trace.stream().anyMatch(t -> t.startsWith("loaded-only ")));
+        assertFalse(f.trace.stream().anyMatch(t -> t.startsWith("loaded-read ")));
+    }
+
+    @Test public void pendingFallsAndOtherSignTypesDoNotGetNewSupportChecks()
+    {
+        Fixture f = new Fixture(false, true, false, true, AxisAlignedTransform2D.R0);
+        f.prepare(289, false);
+        f.ruinsData().fallingBlocks.add(SUPPORT);
+        assertFalse(f.ruins.skipGeneration(f.ruinsData(), f.context(null, false), f.worldPos(DECORATION),
+                f.decoration, f.data, DECORATION));
+        f.ruinsData().fallingBlocks.clear();
+        assertFalse(f.ruins.skipGeneration(f.ruinsData(), f.context(null, false), f.worldPos(DECORATION),
+                Blocks.STANDING_SIGN.getDefaultState(), f.data, DECORATION));
+        assertTrue(f.trace.isEmpty());
+    }
+
+    @Test public void generationPredicateExcludingBackingLeavesSignAlone()
+    {
+        Fixture f = new Fixture(false, true, false, true, AxisAlignedTransform2D.R0);
+        f.prepare(289, false);
+        StructureSpawnContext context = new StructureSpawnContext(f.environment, new Random(99), f.transform,
+                f.bounds, null, pos -> !pos.equals(f.worldPos(SUPPORT)), 0, false, StructureSpawnContext.GenerateMaturity.FIRST);
+        assertFalse(f.ruins.skipGeneration(f.ruinsData(), context, f.worldPos(DECORATION), f.decoration, f.data, DECORATION));
+        assertTrue(f.trace.isEmpty());
+    }
+
+    @Test public void sourceBoundaryAndChangedAttachmentStayUncertain()
+    {
+        Fixture border = new Fixture(false, false, false, false, AxisAlignedTransform2D.R0);
+        BlockPos edge = new BlockPos(0, 2, 2);
+        border.data.blockCollection.setBlockState(edge, border.decoration);
+        border.prepare(0, false);
+        assertFalse(border.ruins.skipGeneration(border.ruinsData(), border.context(null, false), border.worldPos(edge),
+                border.decoration, border.data, edge));
+        assertTrue(border.trace.isEmpty());
+
+        Fixture changed = new Fixture(false, true, false, true, AxisAlignedTransform2D.R0);
+        changed.prepare(289, false);
+        assertFalse(changed.ruins.skipGeneration(changed.ruinsData(), changed.context(null, false), changed.worldPos(DECORATION),
+                changed.decoration.withProperty(BlockWallSign.FACING, EnumFacing.WEST), changed.data, DECORATION));
+        assertTrue(changed.trace.isEmpty());
+    }
+
+    @Test public void omissionDoesNotDeleteAnExistingWorldSign()
+    {
+        Fixture f = new Fixture(false, true, false, true, AxisAlignedTransform2D.R0);
+        f.prepare(289, false);
+        f.blocks.put(f.worldPos(DECORATION), f.decoration);
+        f.generate(0);
+        assertEquals(f.decoration, f.state(f.worldPos(DECORATION)));
+        assertFalse(f.trace.stream().anyMatch(t -> t.startsWith("write ") && t.contains("minecraft:wall_sign")));
+    }
+
+    @Test public void supportedSignWithEffectsKeepsOriginalRandomAndWorldOperations()
+    {
+        Fixture old = new Fixture(false, true, false, true, AxisAlignedTransform2D.R0, true, true);
+        Fixture current = new Fixture(false, true, false, true, AxisAlignedTransform2D.R0);
+        for (Fixture f : Arrays.asList(old, current))
+        {
+            f.ruins.blockErosion = 0.7f;
+            f.ruins.vineGrowth = 0.3f;
+            f.ruins.cobwebGrowth = 0.2f;
+            f.prepare(289, true);
+            assertTrue(f.trace.isEmpty());
+            f.blocks.put(f.worldPos(SUPPORT), Blocks.PLANKS.getDefaultState());
+            f.generate(0);
+        }
+        List<String> operations = new ArrayList<>();
+        for (String event : current.trace)
+            if (!event.startsWith("loaded-only ") && !event.startsWith("loaded-read ")) operations.add(event);
+        assertEquals(old.trace, operations);
+        assertEquals(old.blocks, current.blocks);
+        assertTrue(current.generationDraws > 0);
+        assertEquals(old.generationDraws, current.generationDraws);
+    }
+
+    @Test public void ruinedSignWithErosionIsOmittedAndRecordsChangedLayoutDraws()
+    {
+        Fixture old = new Fixture(false, true, false, true, AxisAlignedTransform2D.R0, true, true);
+        Fixture current = new Fixture(false, true, false, true, AxisAlignedTransform2D.R0);
+        for (Fixture f : Arrays.asList(old, current))
+        {
+            f.ruins.blockErosion = 0.7f;
+            f.prepare(289, true);
+            f.generate(0);
+        }
+        assertEquals(Blocks.WALL_SIGN, old.state(old.worldPos(DECORATION)).getBlock());
+        assertEquals(Blocks.AIR, current.state(current.worldPos(DECORATION)).getBlock());
+        // Existing decoration logic consumes different draws for air and signs. The support
+        // predicate itself is deterministic; do not promise identical streams for changed layouts.
+        System.out.println("AFFECTED_LAYOUT_RANDOM_DRAWS original=" + old.generationDraws + " corrected=" + current.generationDraws);
+    }
+
+    // Frozen pre-fix skip decision keeps the old reproduction available without changing production settings.
+    private static class OriginalRuins extends TransformerRuins
+    {
+        OriginalRuins(boolean decay)
+        {
+            super("ruins", EnumFacing.DOWN, decay ? 0.15f : 0, decay ? 0.15f : 0, 0.6f, 0.1f, false, 0, 0, 0);
+        }
+        @Override public boolean skipGeneration(InstanceData instance, StructureLiveContext context, BlockPos pos,
+                                                IBlockState state, IvWorldData data, BlockPos source)
+        {
+            if (instance.fallingBlocks.contains(source)) return true;
+            double decay = getDecay(instance, source, state);
+            if (decay < 0.000001) return false;
+            else if (decay > 1) return true;
+            return getStability(data, source) < decay;
+        }
+    }
+
     private static long findSeed(boolean torch)
     {
-        Fixture f = new Fixture(torch, true, true, true, AxisAlignedTransform2D.R0);
+        Fixture f = new Fixture(torch, true, true, true, AxisAlignedTransform2D.R0, true, true);
         for (long seed = 0; seed < 4096; seed++)
         {
             f.prepare(seed, false);
@@ -196,11 +332,15 @@ public class RuinsSupportCharacterizationTest
         final TransformerMulti foreign = new TransformerMulti("foreign", "");
         GenericStructure.InstanceData instance;
         boolean restoreBetweenPasses;
+        boolean backingAvailable = true;
+        int generationDraws;
         final WorldServer world = mock(WorldServer.class, withSettings().stubOnly().defaultAnswer(invocation -> {
             String method = invocation.getMethod().getName();
             BlockPos pos;
             switch (method)
             {
+                case "getChunkProvider":
+                    return loadedProvider();
                 case "getBlockState":
                     pos = invocation.getArgument(0);
                     trace.add("read " + pos + " = " + state(pos));
@@ -214,15 +354,35 @@ public class RuinsSupportCharacterizationTest
             }
         }));
         final Environment environment = new Environment(world, null, null, null);
+        final ChunkProviderServer provider = mock(ChunkProviderServer.class, withSettings().stubOnly().defaultAnswer(call -> {
+            if (!call.getMethod().getName().equals("getLoadedChunk"))
+                throw new AssertionError("Unexpected chunk request: " + call.getMethod().getName());
+            trace.add("loaded-only " + call.getArgument(0) + "," + call.getArgument(1));
+            if (!backingAvailable) return null;
+            return mock(Chunk.class, withSettings().stubOnly().defaultAnswer(read -> {
+                if (!read.getMethod().getName().equals("getBlockState"))
+                    throw new AssertionError("Unexpected chunk method: " + read.getMethod().getName());
+                BlockPos pos = read.getArgument(0);
+                trace.add("loaded-read " + pos + " = " + state(pos));
+                return state(pos);
+            }));
+        }));
+        ChunkProviderServer loadedProvider() { return provider; }
 
         Fixture(boolean torch, boolean support, boolean alternative, boolean decay, AxisAlignedTransform2D transform)
+        {
+            this(torch, support, alternative, decay, transform, true, false);
+        }
+
+        Fixture(boolean torch, boolean support, boolean alternative, boolean decay, AxisAlignedTransform2D transform,
+                boolean crossBoundary, boolean original)
         {
             this.transform = transform;
             // Put these adjacent positions on opposite sides of the -16 chunk boundary,
             // regardless of rotation or mirror. The other horizontal axis stays within a chunk.
             BlockPos a = transform.apply(SUPPORT, size), b = transform.apply(DECORATION, size);
-            origin = new BlockPos(a.getX() != b.getX() ? -16 - Math.max(a.getX(), b.getX()) : -24,
-                    60, a.getZ() != b.getZ() ? -16 - Math.max(a.getZ(), b.getZ()) : -24);
+            origin = crossBoundary ? new BlockPos(a.getX() != b.getX() ? -16 - Math.max(a.getX(), b.getX()) : -24,
+                    60, a.getZ() != b.getZ() ? -16 - Math.max(a.getZ(), b.getZ()) : -24) : new BlockPos(-24, 60, -24);
             bounds = new StructureBoundingBox(origin, origin.add(4, 4, 4));
             decoration = torch ? Blocks.TORCH.getDefaultState().withProperty(BlockTorch.FACING, EnumFacing.EAST)
                     : Blocks.WALL_SIGN.getDefaultState().withProperty(BlockWallSign.FACING, EnumFacing.EAST);
@@ -233,7 +393,7 @@ public class RuinsSupportCharacterizationTest
             if (support) collection.setBlockState(SUPPORT, Blocks.PLANKS.getDefaultState());
             if (alternative) collection.setBlockState(ALTERNATIVE, Blocks.PLANKS.getDefaultState());
             data = new IvWorldData(collection, Collections.emptyList(), Collections.emptyList());
-            ruins = new TransformerRuins("ruins", EnumFacing.DOWN, decay ? 0.15f : 0, decay ? 0.15f : 0,
+            ruins = original ? new OriginalRuins(decay) : new TransformerRuins("ruins", EnumFacing.DOWN, decay ? 0.15f : 0, decay ? 0.15f : 0,
                     0.6f, 0.1f, false, 0, 0, 0);
             structure = new GenericStructure() {
                 @Override public IvWorldData constructWorldData() { return data; }
@@ -266,7 +426,8 @@ public class RuinsSupportCharacterizationTest
 
         boolean skips(BlockPos source)
         {
-            return ruins.skipGeneration(ruinsData(), context(null, false), worldPos(source),
+            return ruins.skipGeneration(ruinsData(), new StructurePrepareContext(transform, bounds, false, environment,
+                    new Random(0), StructureSpawnContext.GenerateMaturity.FIRST), worldPos(source),
                     data.blockCollection.getBlockState(source), data, source);
         }
 
@@ -297,7 +458,15 @@ public class RuinsSupportCharacterizationTest
 
         StructureSpawnContext context(StructureBoundingBox clip, boolean completion)
         {
-            return new StructureSpawnContext(environment, new Random(99), transform, bounds, clip, null, 0, false,
+            Random random = new Random(99) {
+                @Override protected int next(int bits) {
+                    int value = super.next(bits);
+                    trace.add("random " + bits + " = " + value);
+                    generationDraws++;
+                    return value;
+                }
+            };
+            return new StructureSpawnContext(environment, random, transform, bounds, clip, null, 0, false,
                     completion ? StructureSpawnContext.GenerateMaturity.COMPLEMENT : StructureSpawnContext.GenerateMaturity.FIRST) {
                 // No real chunks or lighting in this harness. Keep real generation, setBlock,
                 // transformer callbacks, attachment checks and block-state transforms.
@@ -333,6 +502,8 @@ public class RuinsSupportCharacterizationTest
             }
             trace.add("FINAL support=" + state(worldPos(SUPPORT)) + " decoration=" + state(worldPos(DECORATION)));
             assertTrue(RecurrentComplex.forgeEventHandler.disabledTileDropAreas.isEmpty());
+            if (ruins.blockErosion == 0 && ruins.vineGrowth == 0 && ruins.cobwebGrowth == 0)
+                assertEquals(0, generationDraws);
         }
 
         String label(int order, boolean restore) { return decoration + " transform=" + transform + " order=" + order + " restored=" + restore + " trace=" + trace; }

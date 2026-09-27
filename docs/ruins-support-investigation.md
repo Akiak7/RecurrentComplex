@@ -1,5 +1,7 @@
 # Ruins support investigation — 2026-09-27
 
+This records the pre-fix investigation at `a2780e37`. The original reproduction is retained in the tests; see [the subsequent wall-sign correction](ruins-wall-sign-fix.md) for current behaviour and validation.
+
 ## Findings and recommendation
 
 A reproducible gap exists for vanilla wall signs: real Ruins decay can omit the intended backing block while retaining the sign, and the sign can remain floating after RC finishes. In the inspected Minecraft/Forge implementation, torch placement already checks the specific attachment and removes an unsupported torch. A different surviving wall beside either decoration is not a substitute for its actual attachment.
