@@ -21,6 +21,7 @@ import net.minecraft.world.gen.structure.StructureBoundingBox;
 import net.minecraft.world.gen.structure.StructureComponent;
 import net.minecraft.world.gen.structure.StructureVillagePieces;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
@@ -84,18 +85,18 @@ public class GenericVillageCreationHandler implements VillagerRegistry.IVillageC
         Structure structure = StructureRegistry.INSTANCE.get(structureID);
 
         if (structure == null)
-            return kill(villagePiece);
+            return kill(villagePiece, startPiece);
 
         GenerationType generationType = structure.generationType(generationID);
         if (!(generationType instanceof VanillaGeneration))
-            return kill(villagePiece);
+            return kill(villagePiece, startPiece);
 
         VanillaGeneration vanillaGenInfo = (VanillaGeneration) generationType;
 
         AxisAlignedTransform2D transform = GenericVillagePiece.getTransform(vanillaGenInfo.front, structure.isMirrorable(), structure.isRotatable(), front.getOpposite(), random);
 
         if (!vanillaGenInfo.generatesIn(startPiece.biome))
-            return kill(villagePiece);
+            return kill(villagePiece, startPiece);
 
         if (transform == null)
             return reject(villagePiece, false);
@@ -109,7 +110,7 @@ public class GenericVillageCreationHandler implements VillagerRegistry.IVillageC
 
         GenericVillagePiece genericVillagePiece = GenericVillagePiece.create(structureID, generationID, startPiece, generationDepth);
         if (genericVillagePiece == null)
-            return kill(villagePiece);
+            return kill(villagePiece, startPiece);
 
         genericVillagePiece.seed = random.nextLong();
         genericVillagePiece.setIds(structureID, generationID);
@@ -123,9 +124,26 @@ public class GenericVillageCreationHandler implements VillagerRegistry.IVillageC
         return reject(piece, true);
     }
 
+    private StructureVillagePieces.Village kill(StructureVillagePieces.PieceWeight piece, StructureVillagePieces.Start start)
+    {
+        if (start != null && start.structureVillageWeightedPieceList != null
+                && start.structureVillageWeightedPieceList.contains(piece))
+        {
+            // Vanilla is iterating the old list inside this callback. Replace the owner's list,
+            // rather than modifying that iterator's backing list. Exhaustion alone still leaves
+            // the piece's weight in future draws and can repeatedly trigger the torch fallback.
+            List<StructureVillagePieces.PieceWeight> remaining = new ArrayList<>(start.structureVillageWeightedPieceList);
+            remaining.remove(piece);
+            start.structureVillageWeightedPieceList = remaining;
+        }
+        // The current selector invocation has already cached its total weight; leave that
+        // bounded attempt alone. Subsequent positions calculate the total from the new list.
+        return kill(piece);
+    }
+
     static StructureVillagePieces.Village reject(StructureVillagePieces.PieceWeight piece, boolean permanent)
     {
-        // Permanent failures must not be selected repeatedly for the rest of this village.
+        // Mark permanent failure; the start-aware kill overload also retires its selection weight.
         if (permanent)
             piece.villagePiecesSpawned = piece.villagePiecesLimit;
         return null;
