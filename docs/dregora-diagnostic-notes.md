@@ -1,4 +1,6 @@
-**Diagnostic build 2 — implementation and coverage notes**
+**Diagnostic build 3 — implementation and coverage notes**
+
+Build 3 includes the demonstrated child-layout reuse correction documented in [the returned-run analysis](dregora-diagnostic-run-2026-09-27.md). Each scripted chunk pass receives its previously prepared or serialized child layout instead of accidentally preparing a new one. The diagnostic activation, retention and observation mechanisms are unchanged from build 2. This is a test candidate, not a confirmed Dregora fix or a published release.
 
 The tester needs only the [three-step guide](dregora-diagnostic-tester-guide.md). There is no A/B matrix or request to gather separate files. The earlier investigation remains historical evidence, not a new testing assignment.
 
@@ -20,12 +22,12 @@ Anonymous player position and view direction are sampled every 100 player ticks,
 
 Empty population/check activity is counted rather than logged with a stack per chunk. File compression uses the fastest ZIP level on one background writer. Generation callbacks collect bounded records and perform only the previously bounded, already-loaded-chunk reads. No extra worldgen random calls, chunk-providing reads, placement evaluations, generation changes, event rescheduling or worldgen lock changes were introduced. Logging and observation still cost CPU/memory; sustained pregeneration may evict a faulty structure before a player reaches it. A run without captured failure is inconclusive.
 
-The separate optional SelectivePlacer coordinate fix remains in commit `7379fd31`. This package adds no further generation fix and makes no claim of a Dregora fix.
+The separate optional SelectivePlacer coordinate fix remains in commit `7379fd31`. Build 3 adds only the child-layout correction described above; defaults, cleanup, generation mode, event timing and locks remain unchanged. It makes no claim to fix the separate floating-height report.
 
 Validation commands (Zulu Java 8; existing offline Gradle 5.6.4 / Forge 14.23.5.2859 environment):
 
 ```sh
-JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home ./gradlew --offline test --tests '*RCGenerationDiagnostic*Test' --tests '*SelectivePlacerTest' --tests '*WorldStructureGenerationDataCompletionTest'
+JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home ./gradlew --offline test --tests '*WorldScriptStructureGenerator*Test' --tests '*RCGenerationDiagnostic*Test' --tests '*WorldStructureGenerationDataCompletionTest'
 JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home ./gradlew --offline test shadowJar
 ```
 

@@ -52,7 +52,7 @@ final class RCGenerationDiagnosticFile implements AutoCloseable
             catch (FileAlreadyExistsException ignored) { }
         }
         path = candidate;
-        metadata("FORMAT=2 build=dregora-diag2 startedUTC=" + java.time.Instant.now());
+        metadata("FORMAT=2 build=dregora-diag3 startedUTC=" + java.time.Instant.now());
         metadata("RETENTION maxSavedStructures=" + capacity + " maxUnsavedAttempts=" + Math.min(capacity, MAX_OTHER_ATTEMPTS)
                 + " initialChars=" + initialLimit + " laterChars=" + laterLimit
                 + " metadataChars=1048576 recentEventChars=262144 evictionChars=131072; limits count UTF-16 characters");

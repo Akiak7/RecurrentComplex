@@ -41,7 +41,7 @@ processResources {
         def revision = readGit(['rev-parse', 'HEAD'])
         def status = readGit(['status', '--porcelain'])
         def identity = new Properties()
-        identity.setProperty('diagnosticBuild', 'dregora-diag2')
+        identity.setProperty('diagnosticBuild', 'dregora-diag3')
         identity.setProperty('sourceRevision', revision)
         identity.setProperty('sourceDirty', status == 'unavailable' ? 'unknown' : Boolean.toString(!status.isEmpty()))
         identity.setProperty('modVersion', project.version.toString())
