@@ -1,0 +1,12 @@
+// Opt-in test-only benchmark: ./gradlew --offline -I tools/benchmark-natural-air.gradle naturalAirBenchmark
+allprojects {
+    afterEvaluate {
+        task naturalAirBenchmark(type: JavaExec) {
+            dependsOn testClasses
+            classpath = sourceSets.test.runtimeClasspath
+            main = 'ivorius.reccomplex.world.gen.feature.structure.generic.transformers.NaturalAirBenchmark'
+            maxHeapSize = '1g'
+            if (project.hasProperty('benchmarkJava')) executable = project.property('benchmarkJava')
+        }
+    }
+}

@@ -40,6 +40,7 @@ import javax.annotation.Nullable;
 import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -120,8 +121,7 @@ public class TransformerNaturalAir extends TransformerAbstractCloud<TransformerN
             // Do each one separately, since each block needs to be connected to floor separately
             check.forEach(checking ->
             {
-                start.add(checking);
-                if (visitRecursively(start, (changed, pos) ->
+                if (visitFromSingleRoot(checking, start, (changed, pos) ->
                 {
                     IBlockState state = world.getBlockState(pos);
                     boolean isFoliage = RCBlockLogic.isFoliage(state, world, pos);
@@ -142,6 +142,29 @@ public class TransformerNaturalAir extends TransformerAbstractCloud<TransformerN
                 remove.clear();
             });
         }
+    }
+
+    /** Same wave order as visitRecursively, without scanning a retained large table for a terminal root. */
+    static <T> boolean visitFromSingleRoot(T root, HashSet<T> left, BiPredicate<Set<T>, T> visitor)
+    {
+        // The caller clears left after every root. Most roots do not expand to another wave.
+        Set<T> right = new HashSet<>();
+        if (!visitor.test(right, root)) return false;
+        if (right.isEmpty()) return true;
+
+        // Match the original singleton insertion/clear before traversing the remaining waves.
+        // In particular, retain table capacity: shrinking it could change foliage visit order.
+        left.add(root);
+        left.clear();
+        while (!left.isEmpty() || !right.isEmpty())
+        {
+            Set<T> current = !left.isEmpty() ? left : right;
+            Set<T> next = current == left ? right : left;
+            for (T pos : current)
+                if (!visitor.test(next, pos)) return false;
+            current.clear();
+        }
+        return true;
     }
 
     @SideOnly(Side.CLIENT)
