@@ -17,12 +17,12 @@ apply plugin: 'eclipse'
 apply plugin: 'maven-publish'
 apply plugin: 'com.github.johnrengelman.shadow'
 
-version = "2.0.1.1"
+version = "2.0.1.3"
 
 group = "ivorius.reccomplex" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
 archivesBaseName = "RecurrentComplexVolts-1.12.2"
 
-// Build identity travels inside the diagnostic artifact, so testers need not collect a separate build report.
+// Build identity is available to opt-in diagnostics without a separate build report.
 processResources {
     outputs.upToDateWhen { false }
     doLast {
@@ -41,7 +41,7 @@ processResources {
         def revision = readGit(['rev-parse', 'HEAD'])
         def status = readGit(['status', '--porcelain'])
         def identity = new Properties()
-        identity.setProperty('diagnosticBuild', 'dregora-diag3')
+        identity.setProperty('diagnosticBuild', 'release-' + project.version.toString())
         identity.setProperty('sourceRevision', revision)
         identity.setProperty('sourceDirty', status == 'unavailable' ? 'unknown' : Boolean.toString(!status.isEmpty()))
         identity.setProperty('modVersion', project.version.toString())

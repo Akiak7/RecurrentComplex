@@ -1,0 +1,14 @@
+// ./gradlew --offline -I tools/benchmark-maze-layouts.gradle mazeLayoutBenchmark [-PmazeQueue]
+allprojects {
+    afterEvaluate {
+        task mazeLayoutBenchmark(type: JavaExec) {
+            dependsOn testClasses
+            classpath = sourceSets.test.runtimeClasspath
+            main = 'ivorius.reccomplex.world.gen.feature.structure.generic.maze.MazeLayoutQueueBenchmark'
+            maxHeapSize = '1g'
+            systemProperty 'maze.queue', project.hasProperty('mazeQueue')
+            args 'BigPyramid', '0', '6'
+            if (project.hasProperty('benchmarkJava')) executable = project.property('benchmarkJava')
+        }
+    }
+}

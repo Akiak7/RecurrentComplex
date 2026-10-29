@@ -21,6 +21,8 @@ import ivorius.mcopts.translation.ServerTranslations;
 import ivorius.reccomplex.world.gen.feature.structure.registry.MCRegistrySpecial;
 import ivorius.reccomplex.world.gen.feature.RCGenerationDiagnostics;
 import ivorius.reccomplex.world.gen.feature.structure.schematics.SchematicLoader;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.FreshMazeLayouts;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.MazeLayoutWarmup;
 import ivorius.reccomplex.utils.*;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraftforge.common.config.Configuration;
@@ -45,7 +47,7 @@ public class RecurrentComplex
 {
     public static final String NAME = "Recurrent Complex Volts";
     public static final String MOD_ID = "reccomplex";
-    public static final String VERSION = "2.0.1.1";
+    public static final String VERSION = "2.0.1.3";
 
     public static final boolean USE_JSON_FOR_NBT = true;
     public static final boolean USE_ZIP_FOR_STRUCTURE_FILES = true;
@@ -182,12 +184,16 @@ public class RecurrentComplex
     @EventHandler
     public void diagnosticServerStopping(FMLServerStoppingEvent event)
     {
+        MazeLayoutWarmup.stop();
+        FreshMazeLayouts.clear("server stopping");
         RCGenerationDiagnostics.get().stopping(net.minecraftforge.fml.common.FMLCommonHandler.instance().getMinecraftServerInstance());
     }
 
     @EventHandler
     public void diagnosticServerStopped(FMLServerStoppedEvent event)
     {
+        MazeLayoutWarmup.stop();
+        FreshMazeLayouts.clear("server stopped");
         RCGenerationDiagnostics.get().finishSession();
     }
 
@@ -201,5 +207,6 @@ public class RecurrentComplex
     public void onServerStarted(FMLServerStartedEvent event)
     {
         ResourceDirectory.tryReload(loader, LeveledRegistry.Level.SERVER);
+        MazeLayoutWarmup.start(net.minecraftforge.fml.common.FMLCommonHandler.instance().getMinecraftServerInstance());
     }
 }

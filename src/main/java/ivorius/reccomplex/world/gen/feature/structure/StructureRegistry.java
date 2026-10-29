@@ -10,6 +10,8 @@ import ivorius.reccomplex.files.SimpleLeveledRegistry;
 import ivorius.reccomplex.json.SerializableStringTypeRegistry;
 import ivorius.reccomplex.world.gen.feature.structure.generic.generation.GenerationType;
 import ivorius.reccomplex.world.gen.feature.structure.generic.transformers.Transformer;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.FreshMazeLayouts;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.MazeLayoutWarmup;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
@@ -102,6 +104,11 @@ public class StructureRegistry extends SimpleLeveledRegistry<Structure<?>>
     @Override
     protected void invalidateCaches()
     {
+        if (this == INSTANCE)
+        {
+            FreshMazeLayouts.clear("structure change");
+            MazeLayoutWarmup.invalidate();
+        }
         super.invalidateCaches();
         cacheVersion.incrementAndGet();
         cachedGeneration.values().forEach(entry ->

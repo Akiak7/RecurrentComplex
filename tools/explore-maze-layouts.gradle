@@ -1,0 +1,84 @@
+// Explicit test-only headless Forge run. All files/worlds are isolated under build/maze-investigation.
+allprojects {
+    afterEvaluate {
+        def work = project.file(project.findProperty('mazeWork') ?: 'build/maze-investigation/exploration/world-run')
+        work.mkdirs()
+        if (new File(work, 'exploration/level.dat').exists())
+            throw new GradleException('Choose a fresh -PmazeWork directory; existing test worlds change the workload.')
+        def properties = new File(work, 'server.properties')
+        if (!properties.exists()) properties.text = '''server-ip=127.0.0.1
+server-port=0
+online-mode=false
+level-name=exploration
+level-seed=71027
+level-type=FLAT
+generator-settings=3;minecraft:bedrock,2*minecraft:dirt,minecraft:sandstone,60*minecraft:sand;2;
+generate-structures=false
+max-tick-time=180000
+enable-rcon=false
+spawn-protection=0
+'''
+        def config = new File(work, 'config/reccomplex.cfg')
+        if (!config.exists()) {
+            config.parentFile.mkdirs()
+            config.text = '''balancing {
+ D:structureSpawnChance=0.0
+ B:generateNature=false
+ B:mazeLayoutQueue=false
+}
+'''
+        }
+        minecraft.runs.server {
+            workingDirectory work
+            source sourceSets.main
+            source sourceSets.test
+            jvmArgs '-Xmx2G', '-Djava.awt.headless=true'
+            forceExit false
+            property 'maze.exploration', 'true'
+            property 'maze.scenario', project.findProperty('mazeScenario') ?: 'all'
+            property 'maze.encounters', project.findProperty('mazeEncounters') ?: '6'
+            args 'nogui'
+        }
+        tasks.matching { it.name == 'runServer' }.all {
+            dependsOn testClasses
+            doFirst {
+                def toolkit = sourceSets.main.runtimeClasspath.files.find { it.name.startsWith('IvToolkit-') && it.name.endsWith('.jar') }
+                project.copy { from toolkit; into new File(work, 'mods') }
+                // Forge 1.12's ASM scanner cannot read Java 9 module descriptors.
+                // Only local launch copies are filtered; cached dependencies stay unchanged.
+                def safeLibraries = project.file('build/maze-investigation/exploration/java8-libraries')
+                safeLibraries.mkdirs()
+                classpath = project.files(classpath.files.collect { original ->
+                    if (!original.name.endsWith('.jar')) return original
+                    def zip = new java.util.zip.ZipFile(original)
+                    def incompatible = zip.entries().findAll { it.name.endsWith('module-info.class') || it.name.startsWith('META-INF/versions/') }
+                    def restoreForgeSide = original.name.startsWith('forge-1.12.2-14.23.5.2859_mapped_')
+                    if (incompatible.isEmpty() && !restoreForgeSide) { zip.close(); return original }
+                    def safe = new File(safeLibraries, original.name)
+                    if (!safe.exists() || safe.lastModified() < original.lastModified()) {
+                        def output = new java.util.zip.ZipOutputStream(new FileOutputStream(safe))
+                        zip.entries().each { entry ->
+                            if (!entry.name.endsWith('module-info.class') && !entry.name.startsWith('META-INF/versions/')) {
+                                output.putNextEntry(new java.util.zip.ZipEntry(entry.name))
+                                if (!entry.directory) {
+                                    if (restoreForgeSide && entry.name == 'net/minecraftforge/fml/relauncher/Side.class') {
+                                        // The cached mapped runtime has an extra BUKKIT enum value.
+                                        // Restore only this mapping-independent class from official Forge.
+                                        def universalFile = new File(gradle.gradleUserHomeDir, 'caches/forge_gradle/maven_downloader/net/minecraftforge/forge/1.12.2-14.23.5.2859/forge-1.12.2-14.23.5.2859-universal.jar')
+                                        def universal = new java.util.zip.ZipFile(universalFile)
+                                        universal.getInputStream(universal.getEntry(entry.name)).withCloseable { input -> output << input }
+                                        universal.close()
+                                    } else zip.getInputStream(entry).withCloseable { input -> output << input }
+                                }
+                                output.closeEntry()
+                            }
+                        }
+                        output.close()
+                    }
+                    zip.close()
+                    return safe
+                })
+            }
+        }
+    }
+}

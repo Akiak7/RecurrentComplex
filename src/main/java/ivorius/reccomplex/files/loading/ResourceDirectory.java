@@ -7,6 +7,8 @@ package ivorius.reccomplex.files.loading;
 
 import io.netty.buffer.ByteBuf;
 import ivorius.reccomplex.RecurrentComplex;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.FreshMazeLayouts;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.MazeLayoutWarmup;
 import ivorius.reccomplex.files.RCFiles;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
@@ -118,6 +120,8 @@ public enum ResourceDirectory
             default:
                 throw new IllegalArgumentException();
         }
+        FreshMazeLayouts.clear("resource reload");
+        MazeLayoutWarmup.invalidate();
     }
 
     public static void tryLoadResources(FileLoader loader, LeveledRegistry.Level level, Path path, String domain, boolean create)

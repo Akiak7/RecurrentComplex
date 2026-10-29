@@ -20,6 +20,8 @@ import ivorius.reccomplex.item.ItemInputHandler;
 import ivorius.reccomplex.world.gen.feature.WorldGenStructures;
 import ivorius.reccomplex.world.gen.feature.WorldRandomData;
 import ivorius.reccomplex.world.gen.feature.structure.StructureRegistry;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.MazeLayoutWarmup;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.FreshMazeLayouts;
 import ivorius.reccomplex.world.storage.loot.LootTable;
 import ivorius.reccomplex.world.storage.loot.WeightedItemCollectionRegistry;
 import net.minecraft.client.Minecraft;
@@ -183,6 +185,11 @@ public class RCForgeEventHandler
         if ((event.type == TickEvent.Type.CLIENT || event.type == TickEvent.Type.SERVER) && event.phase == TickEvent.Phase.END)
         {
             RecurrentComplex.communicationHandler.handleMessages(event.type == TickEvent.Type.SERVER, true);
+            if (event.type == TickEvent.Type.SERVER)
+            {
+                MazeLayoutWarmup.tick();
+                FreshMazeLayouts.reportIfDue();
+            }
         }
     }
 

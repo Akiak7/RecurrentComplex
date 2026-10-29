@@ -227,9 +227,36 @@ public class WorldScriptMazeGenerator implements WorldScript<WorldScriptMazeGene
 
     public List<PlacedMazeComponent<MazeComponentStructure<Connector>, Connector>> getPlacedRooms(Random random, AxisAlignedTransform2D transform, Environment environment)
     {
-        if (mazeComponent.rooms.isEmpty())
-            return null;
+        if (mazeComponent.rooms.isEmpty()) return null;
+        PreparedRooms prepared = prepareRooms(transform, environment);
+        MazeLayoutRequest queuedRequest = null;
+        if (RCConfig.mazeLayoutQueue && MazeLayoutRequest.supports(this))
+        {
+            queuedRequest = prepared.request();
+            List<PlacedMazeComponent<MazeComponentStructure<Connector>, Connector>> ready =
+                    FreshMazeLayouts.poll(queuedRequest, random.nextLong());
+            if (ready != null)
+            {
+                FreshMazeLayouts.replenish(queuedRequest);
+                return ready;
+            }
+        }
+        try { return prepared.solve(random); }
+        finally
+        {
+            if (queuedRequest != null) FreshMazeLayouts.replenish(queuedRequest);
+        }
+    }
 
+    /** Resolve world-dependent inputs without solving, placing blocks or consuming worldgen RNG. */
+    public MazeLayoutRequest createLayoutRequest(AxisAlignedTransform2D transform, Environment environment)
+    {
+        return mazeComponent.rooms.isEmpty() || !MazeLayoutRequest.supports(this)
+                ? null : prepareRooms(transform, environment).request();
+    }
+
+    private PreparedRooms prepareRooms(AxisAlignedTransform2D transform, Environment environment)
+    {
         ConnectorFactory factory = new ConnectorFactory();
 
         Connector wallConnector = factory.get(ConnectorStrategy.DEFAULT_WALL);
@@ -265,18 +292,55 @@ public class WorldScriptMazeGenerator implements WorldScript<WorldScriptMazeGene
 
         ConnectorStrategy connectorStrategy = new ConnectorStrategy();
 
+        int totalRooms = mazeComponent.rooms.compile(true).size();
+        int reverses = RCConfig.mazePlacementReversesPerRoom >= 0
+                ? MathHelper.floor(totalRooms * RCConfig.mazePlacementReversesPerRoom + 0.5f)
+                : MazeComponentConnector.INFINITE_REVERSES;
+        return new PreparedRooms(factory, blockedConnections, transformedComponents, maze, connectorStrategy, outsideBoundsHigher, reverses);
+    }
+
+    private final class PreparedRooms
+    {
+        final ConnectorFactory factory;
+        final Set<Connector> blocked;
+        final List<MazeComponentStructure<Connector>> components;
+        final MorphingMazeComponent<Connector> maze;
+        final ConnectorStrategy strategy;
+        final int[] bounds;
+        final int reverses;
+
+        PreparedRooms(ConnectorFactory factory, Set<Connector> blocked, List<MazeComponentStructure<Connector>> components,
+                      MorphingMazeComponent<Connector> maze, ConnectorStrategy strategy, int[] bounds, int reverses)
+        {
+            this.factory = factory; this.blocked = blocked; this.components = components;
+            this.maze = maze; this.strategy = strategy; this.bounds = bounds; this.reverses = reverses;
+        }
+
+        MazeLayoutRequest request()
+        {
+            return new MazeLayoutRequest(WorldScriptMazeGenerator.this, maze, components, reverses, RCConfig.mazeTimeout);
+        }
+
+        List<PlacedMazeComponent<MazeComponentStructure<Connector>, Connector>> solve(Random random)
+        {
+            return solveRooms(random, factory, blocked, components, maze, strategy, bounds, reverses);
+        }
+    }
+
+    private List<PlacedMazeComponent<MazeComponentStructure<Connector>, Connector>> solveRooms(Random random, ConnectorFactory factory,
+            Set<Connector> blockedConnections, List<MazeComponentStructure<Connector>> transformedComponents,
+            MorphingMazeComponent<Connector> maze, ConnectorStrategy connectorStrategy, int[] outsideBoundsHigher, int reverses)
+    {
         List<MazePredicate<Connector>> predicates = rules.stream().map(r -> r.build(this, blockedConnections, factory, transformedComponents, connectorStrategy)).filter(Objects::nonNull).collect(Collectors.toCollection(ArrayList::new));
         predicates.add(new LimitAABBStrategy<>(outsideBoundsHigher));
         predicates.add(new BlockedConnectorStrategy<>(blockedConnections));
-
-        int totalRooms = mazeComponent.rooms.compile(true).size();
 
         final ExecutorService executor = Executors.newSingleThreadExecutor();
         Future<List<PlacedMazeComponent<MazeComponentStructure<Connector>, Connector>>> future = executor.submit(() -> MazeComponentConnector.connect(maze,
                 transformedComponents, connectorStrategy,
                 new MazePredicateMany<>(predicates),
                 random,
-                RCConfig.mazePlacementReversesPerRoom >= 0 ? MathHelper.floor(totalRooms * RCConfig.mazePlacementReversesPerRoom + 0.5f) : MazeComponentConnector.INFINITE_REVERSES
+                reverses
         ));
         executor.shutdown();
 

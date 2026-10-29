@@ -22,6 +22,8 @@ import ivorius.reccomplex.world.gen.feature.decoration.RCBiomeDecorator;
 import ivorius.reccomplex.world.gen.feature.SimpleEnvironmentMatcher;
 import ivorius.reccomplex.world.gen.feature.structure.Structure;
 import ivorius.reccomplex.world.gen.feature.structure.StructureRegistry;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.FreshMazeLayouts;
+import ivorius.reccomplex.world.gen.feature.structure.generic.maze.MazeLayoutWarmup;
 import ivorius.reccomplex.world.gen.feature.structure.generic.StructureSaveHandler;
 import ivorius.reccomplex.world.gen.feature.structure.generic.transformers.TransformerMulti;
 import ivorius.reccomplex.world.storage.loot.GenericItemCollectionRegistry;
@@ -106,6 +108,11 @@ public class RCConfig
 
     public static float mazePlacementReversesPerRoom;
     public static long mazeTimeout;
+    public static boolean mazeLayoutQueue;
+    public static int mazeLayoutQueueSize = 2;
+    public static int mazeLayoutQueueMaxConfigurations = 16;
+    public static float mazeLayoutBackgroundTimeoutMultiplier = 2f;
+    public static int mazeLayoutWarmupMillis = 0;
     public static int rayAverageMaxHeightSpread;
 
     public static final Map<String, Boolean> globalToggles = new HashMap<>();
@@ -195,6 +202,32 @@ public class RCConfig
 
             mazePlacementReversesPerRoom = config.getFloat("mazePlacementReversesPerRoom", CATEGORY_BALANCING, 3, -1, 100, "Maximum number of reverses per room the maze generator can do. A higher number results in a better generation success rate, but may freeze the server temporarily.");
             mazeTimeout = config.getInt("mazeTimeout", CATEGORY_BALANCING, 20000, -1, 600000, "Maze generation timeout, in milliseconds. After the time is over, the maze generation will just give up.");
+            mazeLayoutQueue = config.getBoolean("mazeLayoutQueue", CATEGORY_BALANCING, false,
+                    "Experimental: solve fresh maze layouts ahead of demand on a background worker, using each result once. "
+                    + "Preparation begins automatically, even before the first maze encounter. Empty or unmatched queues use the normal solver and can still pause generation. "
+                    + "New layouts depend on exploration order/background timing, rather than only world seed and position. "
+                    + "Custom maze rules use the normal solver. Already generated structures are unchanged.");
+            mazeLayoutQueueSize = config.getInt("mazeLayoutQueueSize", CATEGORY_BALANCING, 2, 1, 8,
+                    "Target number of unused, fresh layouts per cached maze configuration, not a total across structures. "
+                    + "A structure can have several configurations depending on rotation, variables and environment. "
+                    + "One low-priority worker fills the queues; larger values use more memory and background CPU.");
+            mazeLayoutQueueMaxConfigurations = config.getInt("mazeLayoutQueueMaxConfigurations", CATEGORY_BALANCING, 16, 0, Integer.MAX_VALUE,
+                    "Maximum cached maze configurations when mazeLayoutQueue is enabled. "
+                    + "Positive values replace the least recently used configuration when full. 0 disables capacity eviction. "
+                    + "Automatic discovery remains bounded; 0 does not prepare every possible variation upfront. "
+                    + "Configurations are also learned when encountered. Higher values can use more memory.");
+            mazeLayoutBackgroundTimeoutMultiplier = config.getFloat("mazeLayoutBackgroundTimeoutMultiplier", CATEGORY_BALANCING, 2f, 1f, 10f,
+                    "Multiplier applied to mazeTimeout for every background solve attempt, including initial preparation. "
+                    + "Foreground generation keeps mazeTimeout unchanged. Higher values give difficult mazes more time, "
+                    + "but can delay other jobs on the single worker. Failed initial preparation retries up to three times.");
+            mazeLayoutWarmupMillis = config.getInt("mazeLayoutWarmupMillis", CATEGORY_BALANCING, 0, 0, 120000,
+                    "When mazeLayoutQueue is enabled, maximum deliberate startup warmup wait before player logins, in milliseconds. "
+                    + "Prepares representative maze configurations, prioritizing the spawn biome. Remaining work continues in the background. "
+                    + "Default 0 starts discovery on server ticks and solves layouts in the background without deliberately delaying startup; "
+                    + "it does not wait for a maze encounter. Positive values optionally wait for preparation before logins. "
+                    + "Custom or unmatched configurations can still use the normal solver.");
+            FreshMazeLayouts.clear("configuration reload");
+            MazeLayoutWarmup.invalidate();
             rayAverageMaxHeightSpread = config.getInt("rayAverageMaxHeightSpread", CATEGORY_BALANCING, 7, 0, 64, "Maximum allowed height spread for average ray placement. Set to 0 to disable height spread tolerance.");
 
             universalTransformer = null;
