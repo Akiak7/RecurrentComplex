@@ -9,6 +9,7 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.datafix.fixes.EntityId;
+import net.minecraft.util.datafix.fixes.SpawnerEntityTypes;
 import net.minecraft.util.datafix.fixes.TileEntityId;
 import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
@@ -35,12 +36,13 @@ import static net.minecraft.nbt.CompressedStreamTools.writeCompressed;
 public class StructureWorldDataSanitizer
 {
     private static final String CACHE_VERSION_TAG = "cacheVersion";
-    private static final int CACHE_VERSION = 3;
+    private static final int CACHE_VERSION = 4;
     private static final String AIR_BLOCK_ID = "minecraft:air";
     private static final String MOB_SPAWNER_TILE_ENTITY_ID = "minecraft:mob_spawner";
     private static final Set<String> RC_INTERNAL_BLOCK_IDS = new HashSet<>();
     private static final TileEntityId LEGACY_TILE_ENTITY_ID_FIXER = new TileEntityId();
     private static final EntityId LEGACY_ENTITY_ID_FIXER = new EntityId();
+    private static final SpawnerEntityTypes LEGACY_SPAWNER_FIXER = new SpawnerEntityTypes();
     private static final AtomicBoolean TILE_ENTITY_REGISTRY_WARNING_LOGGED = new AtomicBoolean();
 
     static
@@ -185,9 +187,9 @@ public class StructureWorldDataSanitizer
         for (int i = 0; i < tileEntities.tagCount(); i++)
         {
             NBTTagCompound tileEntity = tileEntities.getCompoundTagAt(i);
-            if (normalizeLegacyTileEntityId(tileEntity))
-                changed = true;
             if (normalizeLegacySpawnerEntityIds(tileEntity))
+                changed = true;
+            if (normalizeLegacyTileEntityId(tileEntity))
                 changed = true;
             boolean keep = isKnownTileEntity(tileEntity.getString("id"));
 
@@ -389,17 +391,30 @@ public class StructureWorldDataSanitizer
 
     static boolean normalizeLegacySpawnerEntityIds(NBTTagCompound tileEntity)
     {
-        if (!MOB_SPAWNER_TILE_ENTITY_ID.equals(tileEntity.getString("id")))
+        String tileEntityId = tileEntity.getString("id");
+        if (!"MobSpawner".equals(tileEntityId) && !MOB_SPAWNER_TILE_ENTITY_ID.equals(tileEntityId))
             return false;
 
-        boolean changed = false;
+        boolean changed = tileEntity.hasKey("EntityId", Constants.NBT.TAG_STRING);
+        NBTTagList potentials = tileEntity.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND);
+        for (int i = 0; i < potentials.tagCount() && !changed; i++)
+            changed = potentials.getCompoundTagAt(i).hasKey("Type", Constants.NBT.TAG_STRING);
+
+        if (changed)
+        {
+            // Vanilla's schema converter recognizes only the old tile ID. Also repair
+            // already-renamed spawners whose EntityId / Type fields are still legacy.
+            tileEntity.setString("id", "MobSpawner");
+            try { LEGACY_SPAWNER_FIXER.fixTagCompound(tileEntity); }
+            finally { tileEntity.setString("id", tileEntityId); }
+        }
 
         if (tileEntity.hasKey("SpawnData", Constants.NBT.TAG_COMPOUND))
             changed |= normalizeLegacyEntityId(tileEntity.getCompoundTag("SpawnData"));
 
         if (tileEntity.hasKey("SpawnPotentials", Constants.NBT.TAG_LIST))
         {
-            NBTTagList potentials = tileEntity.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND);
+            potentials = tileEntity.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND);
             for (int i = 0; i < potentials.tagCount(); i++)
             {
                 NBTTagCompound potential = potentials.getCompoundTagAt(i);

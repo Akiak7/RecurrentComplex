@@ -8,7 +8,10 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.tileentity.TileEntityMobSpawner;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.datafix.DataFixesManager;
+import net.minecraft.util.datafix.FixTypes;
 import net.minecraftforge.common.util.Constants;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -501,8 +504,130 @@ public class StructureWorldDataSanitizerTest
 
         try (java.io.InputStream stream = Files.newInputStream(currentCache))
         {
-            Assert.assertEquals(3, readCompressed(stream).getInteger("cacheVersion"));
+            Assert.assertEquals(4, readCompressed(stream).getInteger("cacheVersion"));
         }
+    }
+
+    @Test
+    public void bundledPyramidSpiderSpawnerSurvivesMinecraftLoadingAndClientUpdates() throws Exception
+    {
+        NBTTagCompound original = readBundledWorldData(
+                "/assets/reccomplex/structures/active/structures/pyramid/PyramidMazeSpiderTurn.rcst");
+        NBTTagCompound rawSpawner = original.getTagList("tileEntities", Constants.NBT.TAG_COMPOUND).getCompoundTagAt(0);
+        Assert.assertEquals("CaveSpider", rawSpawner.getString("EntityId"));
+        NBTTagCompound before = original.copy();
+        NBTTagCompound sanitized = StructureWorldDataSanitizer.sanitize(original).getWorldData()
+                .getTagList("tileEntities", Constants.NBT.TAG_COMPOUND).getCompoundTagAt(0);
+        Assert.assertEquals("minecraft:mob_spawner", sanitized.getString("id"));
+        Assert.assertFalse(sanitized.hasKey("EntityId"));
+        Assert.assertEquals("minecraft:cave_spider", sanitized.getCompoundTag("SpawnData").getString("id"));
+        Assert.assertEquals(rawSpawner.getShort("MaxSpawnDelay"), sanitized.getShort("MaxSpawnDelay"));
+
+        NBTTagCompound fixed = DataFixesManager.createFixer().process(FixTypes.BLOCK_ENTITY, sanitized.copy());
+        TileEntityMobSpawner placed = new TileEntityMobSpawner();
+        placed.readFromNBT(fixed);
+        Assert.assertEquals("minecraft:cave_spider", placed.writeToNBT(new NBTTagCompound()).getCompoundTag("SpawnData").getString("id"));
+        TileEntityMobSpawner client = new TileEntityMobSpawner();
+        client.readFromNBT(placed.getUpdateTag());
+        Assert.assertEquals("minecraft:cave_spider", client.writeToNBT(new NBTTagCompound()).getCompoundTag("SpawnData").getString("id"));
+        Assert.assertEquals(before, original);
+    }
+
+    @Test
+    public void convertsLegacySpawnerSchemaForBothLegacyAndModernTileIds()
+    {
+        for (String tileID : new String[]{"MobSpawner", "minecraft:mob_spawner"})
+        for (boolean hasEntityId : new boolean[]{true, false})
+        {
+            NBTTagCompound spawner = tileEntity(tileID, 3);
+            if (hasEntityId) spawner.setString("EntityId", "CaveSpider");
+            spawner.setShort("Delay", (short) 47);
+            spawner.setShort("SpawnCount", (short) 6);
+            NBTTagCompound spawnData = new NBTTagCompound();
+            spawnData.setString("id", "minecraft:skeleton");
+            spawnData.setString("customNestedPayload", "keep-spawn-data");
+            spawner.setTag("SpawnData", spawnData);
+            NBTTagList potentials = new NBTTagList();
+            NBTTagCompound legacy = new NBTTagCompound();
+            legacy.setString("Type", "PigZombie");
+            legacy.setInteger("Weight", 7);
+            NBTTagCompound properties = new NBTTagCompound();
+            properties.setString("customNestedPayload", "keep-legacy-properties");
+            legacy.setTag("Properties", properties);
+            potentials.appendTag(legacy);
+            NBTTagCompound moddedLegacy = new NBTTagCompound();
+            moddedLegacy.setString("Type", "missingmod:custom_mob");
+            moddedLegacy.setInteger("Weight", 11);
+            NBTTagCompound moddedProperties = new NBTTagCompound();
+            moddedProperties.setString("customNestedPayload", "keep-modded-properties");
+            moddedLegacy.setTag("Properties", moddedProperties);
+            potentials.appendTag(moddedLegacy);
+            NBTTagCompound modernPotential = spawnPotential("minecraft:skeleton", "keep-modern-potential");
+            potentials.appendTag(modernPotential);
+            spawner.setTag("SpawnPotentials", potentials);
+            NBTTagCompound worldData = new NBTTagCompound();
+            NBTTagList tiles = new NBTTagList(); tiles.appendTag(spawner); worldData.setTag("tileEntities", tiles);
+            NBTTagCompound original = worldData.copy();
+
+            NBTTagCompound result = StructureWorldDataSanitizer.sanitize(worldData).getWorldData()
+                    .getTagList("tileEntities", Constants.NBT.TAG_COMPOUND).getCompoundTagAt(0);
+            Assert.assertEquals("minecraft:mob_spawner", result.getString("id"));
+            Assert.assertFalse(result.hasKey("EntityId"));
+            Assert.assertEquals(hasEntityId ? "minecraft:cave_spider" : "minecraft:skeleton", result.getCompoundTag("SpawnData").getString("id"));
+            Assert.assertEquals("keep-spawn-data", result.getCompoundTag("SpawnData").getString("customNestedPayload"));
+            NBTTagList converted = result.getTagList("SpawnPotentials", Constants.NBT.TAG_COMPOUND);
+            Assert.assertEquals(7, converted.getCompoundTagAt(0).getInteger("Weight"));
+            Assert.assertEquals("minecraft:zombie_pigman", converted.getCompoundTagAt(0).getCompoundTag("Entity").getString("id"));
+            Assert.assertEquals("keep-legacy-properties", converted.getCompoundTagAt(0).getCompoundTag("Entity").getString("customNestedPayload"));
+            Assert.assertFalse(converted.getCompoundTagAt(0).hasKey("Type"));
+            Assert.assertFalse(converted.getCompoundTagAt(0).hasKey("Properties"));
+            Assert.assertEquals(11, converted.getCompoundTagAt(1).getInteger("Weight"));
+            Assert.assertEquals("missingmod:custom_mob", converted.getCompoundTagAt(1).getCompoundTag("Entity").getString("id"));
+            Assert.assertEquals("keep-modded-properties", converted.getCompoundTagAt(1).getCompoundTag("Entity").getString("customNestedPayload"));
+            Assert.assertEquals(modernPotential, converted.getCompoundTagAt(2));
+            Assert.assertEquals(47, result.getShort("Delay"));
+            Assert.assertEquals(6, result.getShort("SpawnCount"));
+            Assert.assertEquals(spawner.getString("customPayload"), result.getString("customPayload"));
+            Assert.assertEquals(original, worldData);
+        }
+    }
+
+    @Test
+    public void leavesModernCustomSpawnersAndUnrelatedLegacyLookingFieldsUnchanged()
+    {
+        NBTTagCompound worldData = new NBTTagCompound();
+        NBTTagList tiles = new NBTTagList();
+        NBTTagCompound modern = tileEntity("minecraft:mob_spawner", 0);
+        modern.setTag("SpawnData", spawnEntity("missingmod:custom_mob", "modern-data"));
+        NBTTagList potentials = new NBTTagList(); potentials.appendTag(spawnPotential("minecraft:cave_spider", "modern-potential"));
+        modern.setTag("SpawnPotentials", potentials); tiles.appendTag(modern);
+        NBTTagCompound unrelated = tileEntity("minecraft:dispenser", 1);
+        unrelated.setString("EntityId", "CaveSpider");
+        NBTTagList unrelatedPotentials = new NBTTagList();
+        NBTTagCompound unrelatedEntry = new NBTTagCompound();
+        unrelatedEntry.setString("Type", "PigZombie"); unrelatedEntry.setTag("Properties", new NBTTagCompound());
+        unrelatedPotentials.appendTag(unrelatedEntry); unrelated.setTag("SpawnPotentials", unrelatedPotentials);
+        tiles.appendTag(unrelated); worldData.setTag("tileEntities", tiles);
+        Assert.assertEquals(worldData, StructureWorldDataSanitizer.sanitize(worldData).getWorldData());
+    }
+
+    @Test
+    public void rejectsVersionThreeSpawnerCacheAndRoundTripsRepairedCache() throws Exception
+    {
+        NBTTagCompound original = readBundledWorldData(
+                "/assets/reccomplex/structures/active/structures/pyramid/PyramidMazeSpiderTurn.rcst");
+        NBTTagCompound stale = original.copy();
+        stale.getTagList("tileEntities", Constants.NBT.TAG_COMPOUND).getCompoundTagAt(0).setString("id", "minecraft:mob_spawner");
+        NBTTagCompound root = new NBTTagCompound();
+        root.setInteger("cacheVersion", 3); root.setString("sourceHash", "same-source"); root.setTag("worldData", stale);
+        Path path = temporaryFolder.newFile("version-three-spawner.nbt").toPath();
+        try (OutputStream stream = Files.newOutputStream(path)) { writeCompressed(root, stream); }
+        Assert.assertNull(StructureWorldDataSanitizer.readCache(path, "same-source"));
+        StructureWorldDataSanitizer.writeCache(path, "same-source", StructureWorldDataSanitizer.sanitize(original));
+        NBTTagCompound cached = StructureWorldDataSanitizer.readCache(path, "same-source");
+        Assert.assertNotNull(cached);
+        Assert.assertEquals("minecraft:cave_spider", cached.getTagList("tileEntities", Constants.NBT.TAG_COMPOUND)
+                .getCompoundTagAt(0).getCompoundTag("SpawnData").getString("id"));
     }
 
     @Test
